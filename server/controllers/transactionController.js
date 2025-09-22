@@ -1,5 +1,5 @@
 const Transaction = require("../models/transactions");
-const User = require("../models/Users");
+const User = require("../models/users");
 const Account = require("../models/accounts");
 
 //Carrying out a transaction (withdraw/ deposit)

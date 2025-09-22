@@ -5,7 +5,10 @@ info:
   description: API documentation for authentication and user management
 
 servers:
+  - url: https://gkash.onrender.com/api
+    description: Production server
   - url: http://localhost:3000/api
+    description: Development server
 
 paths:
   /auth/signup:

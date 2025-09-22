@@ -1,27 +1,27 @@
 const User = require("../models/Users");
 const bcrypt = require("bcryptjs");
 
-//Create User
-exports.createUser = async(req, res) => {
-    try{
-        const {user_name, user_nationalId, user_pin, phoneNumber} = req.body;
+// Create User
+// exports.createUser = async(req, res) => {
+//     try{
+//         const {user_name, user_nationalId, user_pin, phoneNumber} = req.body;
         
-        const exist = await User.findOne({user_nationalId});
-        if(exist) return res.status(400).json({message: "User already exists"});
+//         const exist = await User.findOne({user_nationalId});
+//         if(exist) return res.status(400).json({message: "User already exists"});
 
-        const hashed = await bcrypt.hash(user_pin, 10);
-        const user = await User.create({user_name, user_nationalId, user_pin: hashed, phoneNumber})
-        res.status(201).json({message: "User created successfully", 
-            user: { 
-                id: user._id, 
-                user_name: user.user_name, 
-                phoneNumber: user.phoneNumber 
-            } 
-        });
-    }catch(error){
-        res.status(400).json({message: error.message});
-    }
-};
+//         const hashed = await bcrypt.hash(user_pin, 10);
+//         const user = await User.create({user_name, user_nationalId, user_pin: hashed, phoneNumber})
+//         res.status(201).json({message: "User created successfully", 
+//             user: { 
+//                 id: user._id, 
+//                 user_name: user.user_name, 
+//                 phoneNumber: user.phoneNumber 
+//             } 
+//         });
+//     }catch(error){
+//         res.status(400).json({message: error.message});
+//     }
+// };
 
 //Get all users
 exports.getUsers = async (req, res) => {

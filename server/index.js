@@ -3,13 +3,18 @@ const ConnectDB = require("./config/db")
 const dotenv = require("dotenv");
 const userRoutes = require("./routes/userRoutes")
 const authRoutes = require("./routes/authRoutes")
+const swaggerUi = require("swagger-ui-express");
+const Yaml = require("yamljs");
+const swaggerDocument = Yaml.load("./Swagger.yaml")
 dotenv.config();
 ConnectDB();
 
 const app = express();
+app.use(express.json());
 
-app.use("/api/users", userRoutes)
-app.use("/api/auth", userRoutes)
+app.use("/api", userRoutes)
+app.use("/api/auth", authRoutes)
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.listen(process.env.PORT, () => {
     console.log(`Port is live at http://localhost:${process.env.PORT}`)
 })

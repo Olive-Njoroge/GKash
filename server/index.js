@@ -6,7 +6,7 @@ const authRoutes = require("./routes/authRoutes")
 const swaggerUi = require("swagger-ui-express");
 const Yaml = require("yamljs");
 
-const swaggerDocument = Yaml.load("./swagger.yaml");
+const swaggerDocument = Yaml.load("./Swagger.yaml");
 
 dotenv.config();
 ConnectDB();

@@ -18,7 +18,7 @@ exports.signup = async(req, res) => {
 
             //Token
             const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, { expiresIn: "1d" });
-            res.status(201).json({message: "signup successful", token, user: {id: user._id, user_name: user.user_name, phoneNumber: user.phoneNumber}});
+            res.status(201).json({message: "signup successful", token, user: {user_nationalId: user.user_nationalId, user_name: user.user_name, phoneNumber: user.phoneNumber}});
         }
     }catch(error){
         console.error(error);
@@ -39,7 +39,7 @@ exports.login = async(req, res) => {
             const match = await bcrypt.compare(user_pin, user.user_pin);
             if(!match) return res.status(401).json({message: "Incorrect Pin"});
             const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, { expiresIn: "1d" });
-            res.status(200).json({message: "Login successful", token, user: {id: user._id, user_name: user.user_name, phoneNumber: user.phoneNumber}});
+            res.status(200).json({message: "Login successful", token, user: {user_nationalId: user.user_nationalId, user_name: user.user_name, phoneNumber: user.phoneNumber}});
         }
     }catch(error){
         console.error(error);

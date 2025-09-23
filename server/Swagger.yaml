@@ -75,12 +75,12 @@ paths:
             schema:
               type: object
               required:
-                - phoneNumber
+                - user_nationalId
                 - user_pin
               properties:
-                phoneNumber:
+                user_nationalId:
                   type: string
-                  example: "6789087654"
+                  example: "12345678"
                 user_pin:
                   type: string
                   format: password

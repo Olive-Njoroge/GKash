@@ -12,8 +12,8 @@ exports.protect = (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Attach decoded payload to request
-        req.user = decoded;
+        // Attach userId to request (easier to use later)
+        req.userId = decoded.id;
         next();
     }catch(error){
         console.error("JWT Error:", error.message);

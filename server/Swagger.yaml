@@ -11,9 +11,9 @@ servers:
     description: Development server
 
 paths:
-  /auth/signup:
+  /auth/register-user:
     post:
-      summary: Register a new user
+      summary: Step 1 - Register user without PIN
       tags: [Auth]
       requestBody:
         required: true
@@ -24,7 +24,6 @@ paths:
               required:
                 - user_name
                 - phoneNumber
-                - user_pin
                 - user_nationalId
               properties:
                 user_name:
@@ -33,20 +32,80 @@ paths:
                 phoneNumber:
                   type: string
                   example: "6789087654"
-                user_pin:
-                  type: string
-                  format: password
-                  example: mySecretPass123
                 user_nationalId:
                   type: string
                   example: "12345678"
       responses:
         "201":
-          description: Signup successful
+          description: User registered successfully. Use temp_token to set PIN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User registered. Please set your PIN"
+                  temp_token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user_id:
+                    type: string
+                    example: "507f1f77bcf86cd799439011"
+        "400":
+          description: User already exists
+
+  /auth/create-pin:
+    post:
+      summary: Step 2 - Create user PIN
+      tags: [Auth]
+      security:
+        - tempTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_pin
+              properties:
+                user_pin:
+                  type: string
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN
+      responses:
+        "200":
+          description: PIN created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "PIN created successfully"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    type: object
+                    properties:
+                      user_nationalId:
+                        type: string
+                      user_name:
+                        type: string
+                      phoneNumber:
+                        type: string
+        "400":
+          description: Invalid PIN format
+        "403":
+          description: Invalid temp token
 
   /auth/login:
     post:
-      summary: Login user
+      summary: Login user with PIN
       tags: [Auth]
       requestBody:
         required: true
@@ -63,11 +122,38 @@ paths:
                   example: "12345678"
                 user_pin:
                   type: string
-                  format: password
-                  example: mySecretPass123
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN
       responses:
         "200":
           description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Login successful"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    type: object
+                    properties:
+                      user_nationalId:
+                        type: string
+                      user_name:
+                        type: string
+                      phoneNumber:
+                        type: string
+        "400":
+          description: Please complete registration by setting a PIN
+        "401":
+          description: Invalid credentials
+        "404":
+          description: User not found
 
   /user:
     get:
@@ -241,3 +327,9 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: JWT token for authenticated requests
+    tempTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Temporary token for PIN setup (15-minute expiry)

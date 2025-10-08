@@ -47,7 +47,7 @@ exports.createTransaction = async(req, res) => {
 //View all your transactions
 exports.viewTransactions = async(req, res) => {
     try{
-        const transactions = await Transaction.find({user: req.userId}).sort({date_and_time: -1})
+        const transactions = await Transaction.find({user_id: req.userId}).sort({date_and_time: -1})
         res.status(200).json(transactions);
 
     }catch(error){

@@ -321,6 +321,153 @@ paths:
         "200":
           description: List of transactions
 
+  /chatbot/chat:
+    post:
+      summary: Send a message to the money market funds chatbot
+      tags: [Chatbot]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  example: "What are money market funds?"
+                  description: Your question about money market funds
+                sessionId:
+                  type: string
+                  example: "user-123-session"
+                  description: Optional session ID for conversation continuity
+      responses:
+        "200":
+          description: Chatbot response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    example: "Money market funds are low-risk investments that hold short-term securities like Treasury bills. They offer better yields than savings accounts with high liquidity."
+                    description: "Concise, easy-to-read response (2-3 sentences max)"
+                  sessionId:
+                    type: string
+                    example: "user-123-session"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Message is required and must be a non-empty string"
+        "500":
+          description: Server error
+
+  /chatbot/reset:
+    post:
+      summary: Reset chatbot conversation for a session
+      tags: [Chatbot]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  example: "user-123-session"
+                  description: Session ID to reset (defaults to 'default')
+      responses:
+        "200":
+          description: Conversation reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Conversation reset successfully"
+                  sessionId:
+                    type: string
+                    example: "user-123-session"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "500":
+          description: Server error
+
+  /chatbot/session:
+    delete:
+      summary: Delete a specific chat session
+      tags: [Chatbot]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sessionId
+              properties:
+                sessionId:
+                  type: string
+                  example: "user-123-session"
+                  description: Session ID to delete (cannot be 'default')
+      responses:
+        "200":
+          description: Session deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Session deleted successfully"
+                  sessionId:
+                    type: string
+                    example: "user-123-session"
+        "400":
+          description: Invalid session ID
+        "404":
+          description: Session not found
+        "500":
+          description: Server error
+
+  /chatbot/health:
+    get:
+      summary: Health check for chatbot service
+      tags: [Chatbot]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  service:
+                    type: string
+                    example: "Money Market Funds Chatbot"
+                  timestamp:
+                    type: string
+                    format: date-time
+
 components:
   securitySchemes:
     bearerAuth:

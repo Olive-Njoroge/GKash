@@ -12,31 +12,50 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// OCR.space API function
+// OCR.space API function with improved error handling
 const extractTextFromImage = async (imageBuffer) => {
     try {
         const formData = new FormData();
         formData.append('file', imageBuffer, 'image.jpg');
-        formData.append('apikey', process.env.OCR_SPACE_API_KEY || 'helloworld'); // Free tier key
+        formData.append('apikey', process.env.OCR_SPACE_API_KEY || 'K87899142588957');
         formData.append('language', 'eng');
         formData.append('isOverlayRequired', 'false');
-        formData.append('detectOrientation', 'false');
+        formData.append('detectOrientation', 'true');
         formData.append('isTable', 'true');
+        formData.append('scale', 'true');        // Better for low-resolution images
+        formData.append('OCREngine', '2');       // Better for IDs and documents
 
+        console.log('Attempting OCR extraction...');
+        
         const response = await axios.post('https://api.ocr.space/parse/image', formData, {
             headers: {
                 ...formData.getHeaders(),
             },
+            timeout: 30000, // 30 second timeout
+            maxRedirects: 5
         });
 
+        console.log('OCR Response status:', response.status);
+        
         if (response.data.IsErroredOnProcessing) {
+            console.error('OCR Error:', response.data.ErrorMessage);
             throw new Error(response.data.ErrorMessage || 'OCR processing failed');
         }
 
-        return response.data.ParsedResults[0]?.ParsedText || '';
+        const extractedText = response.data.ParsedResults[0]?.ParsedText || '';
+        console.log('OCR extraction successful, text length:', extractedText.length);
+        
+        return extractedText;
     } catch (error) {
         console.error('OCR extraction error:', error.message);
-        throw new Error('Failed to extract text from image');
+        
+        // Return empty string instead of throwing error to allow registration to continue
+        if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
+            console.warn('OCR timeout - continuing without text extraction');
+            return 'OCR_TIMEOUT_ERROR';
+        }
+        
+        return 'OCR_EXTRACTION_FAILED';
     }
 };
 
@@ -65,11 +84,21 @@ exports.registerWithId = async(req, res) => {
 
         console.log('Extracted text from ID:', extractedText);
 
-        // Step 2: Extract user data from ID
-        const extractedData = extractUserDataFromId(extractedText);
+        let extractedData = { user_nationalId: null, user_name: null };
         
-        // Check if user already exists with this ID number
-        if(extractedData.user_nationalId) {
+        // Step 2: Extract user data from ID (only if OCR was successful)
+        if (extractedText && !extractedText.includes('OCR_')) {
+            extractedData = extractUserDataFromId(extractedText);
+        } else {
+            console.warn('OCR failed or timed out - proceeding with manual verification');
+            extractedData = { 
+                user_nationalId: 'MANUAL_VERIFICATION_REQUIRED', 
+                user_name: 'MANUAL_VERIFICATION_REQUIRED' 
+            };
+        }
+        
+        // Check if user already exists with this ID number (only if we have a valid ID)
+        if(extractedData.user_nationalId && extractedData.user_nationalId !== 'MANUAL_VERIFICATION_REQUIRED') {
             const exist = await User.findOne({user_nationalId: extractedData.user_nationalId});
             if(exist){
                 return res.status(400).json({
@@ -207,67 +236,232 @@ exports.registerWithId = async(req, res) => {
 // Helper function to extract user data from ID text
 function extractUserDataFromId(extractedText) {
     console.log('=== DEBUGGING NAME EXTRACTION ===');
-    console.log('Full extracted text:', extractedText);
+    console.log('Full extracted text length:', extractedText.length);
+    console.log('Full extracted text:', JSON.stringify(extractedText, null, 2));
     
-    // Extract ID number (Kenyan format: typically 7-8 digits)
-    const idNumberMatch = extractedText.match(/\b\d{7,8}\b/);
-    const user_nationalId = idNumberMatch ? idNumberMatch[0] : null;
+    // Extract ID number - More flexible patterns for Kenyan IDs
+    let user_nationalId = null;
     
-    // Extract name with improved logic for Kenyan IDs
-    const lines = extractedText.split('\n').filter(line => line.trim().length > 0);
-    let user_name = null;
-    
-    console.log('Lines from ID:', lines);
-    
-    // Common words to skip when looking for names
-    const skipWords = [
-        'republic', 'kenya', 'identity', 'card', 'national', 'id', 'number',
-        'date', 'birth', 'sex', 'male', 'female', 'signature', 'photo',
-        'mayes', 'issue', 'expires', 'authority', 'government', 'official'
+    // Try multiple ID number patterns
+    const idPatterns = [
+        /\b\d{7,8}\b/g,           // 7-8 digits
+        /\b\d{6,9}\b/g,           // 6-9 digits (broader range)
+        /ID[\s:]*(\d{7,8})/gi,    // "ID: 12345678"
+        /NO[\s:]*(\d{7,8})/gi,    // "NO: 12345678"
+        /NUMBER[\s:]*(\d{7,8})/gi // "NUMBER: 12345678"
     ];
     
-    // Look for name patterns - names are usually:
-    // 1. All uppercase letters (common on Kenyan IDs)
-    // 2. Multiple words (first name + surname)
-    // 3. No numbers
-    // 4. Between 5-50 characters
-    for (let line of lines) {
-        const cleanLine = line.trim();
+    for (let pattern of idPatterns) {
+        const matches = [...extractedText.matchAll(pattern)];
+        if (matches.length > 0) {
+            // Take the first match, extract the capture group if exists
+            user_nationalId = matches[0][1] || matches[0][0];
+            console.log('Found ID number with pattern:', pattern, '-> Result:', user_nationalId);
+            break;
+        }
+    }
+    
+    // Extract name with more aggressive pattern matching
+    const lines = extractedText.split(/[\n\r]+/).filter(line => line.trim().length > 0);
+    let user_name = null;
+    
+    console.log('Total lines found:', lines.length);
+    lines.forEach((line, index) => {
+        console.log(`Line ${index + 1}:`, JSON.stringify(line.trim()));
+    });
+    
+    // Common words to skip when looking for names (expanded list)
+    const skipWords = [
+        'republic', 'kenya', 'identity', 'card', 'national', 'id', 'number', 'no',
+        'date', 'birth', 'sex', 'male', 'female', 'signature', 'photo', 'issued',
+        'mayes', 'issue', 'expires', 'authority', 'government', 'official', 'card',
+        'holder', 'dob', 'place', 'district', 'location', 'of', 'the', 'and', 'in'
+    ];
+    
+    // Strategy 1: Look for name patterns, especially after "FULL NAMES" or "NAME" labels
+    for (let i = 0; i < lines.length; i++) {
+        const cleanLine = lines[i].trim().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ');
         
-        // Skip empty lines or lines with numbers
-        if (!cleanLine || /\d/.test(cleanLine)) continue;
+        // Skip empty lines
+        if (!cleanLine) continue;
+        
+        console.log(`Processing line ${i + 1}:`, cleanLine);
+        
+        // Special case: Check if current line contains "FULL NAMES" or "NAME" 
+        // If so, look at the next few lines for the actual name
+        const lowerLine = cleanLine.toLowerCase();
+        if (lowerLine.includes('full names') || lowerLine.includes('full name') || 
+            (lowerLine === 'name' || lowerLine === 'names')) {
+            console.log('  -> Found name label, checking next lines...');
+            
+            // Check the next 3 lines for the actual name
+            for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+                const nextLine = lines[j].trim().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ');
+                
+                if (!nextLine || nextLine.length < 5) continue;
+                
+                // Skip if contains numbers or common keywords
+                if (/\d/.test(nextLine)) continue;
+                
+                const nextLower = nextLine.toLowerCase();
+                if (skipWords.some(word => nextLower.includes(word))) continue;
+                
+                const nameWords = nextLine.split(/\s+/).filter(word => word.length > 1);
+                
+                if (nameWords.length >= 2 && nameWords.length <= 4) {
+                    const isValidName = nameWords.every(word => 
+                        /^[A-Za-z]+$/.test(word) && word.length >= 2 && word.length <= 20
+                    );
+                    
+                    if (isValidName) {
+                        user_name = nextLine.toUpperCase();
+                        console.log(`  ✓ Found name after label (line ${j + 1}):`, user_name);
+                        break;
+                    }
+                }
+            }
+            
+            if (user_name) break;
+        }
+        
+        // Regular pattern matching (skip if line looks like a label)
+        if (lowerLine.includes('full') || lowerLine.includes('name') || 
+            lowerLine.includes('names') || lowerLine.includes('surname')) {
+            console.log('  -> Skipped: appears to be a label');
+            continue;
+        }
+        
+        // Skip lines with numbers (likely not names)
+        if (/\d/.test(cleanLine)) {
+            console.log('  -> Skipped: contains numbers');
+            continue;
+        }
+        
+        // Skip lines that are too short or too long
+        if (cleanLine.length < 5 || cleanLine.length > 50) {
+            console.log('  -> Skipped: length out of range');
+            continue;
+        }
         
         // Skip lines that contain common ID keywords
-        const lowerLine = cleanLine.toLowerCase();
-        if (skipWords.some(word => lowerLine.includes(word))) continue;
+        if (skipWords.some(word => lowerLine.includes(word))) {
+            console.log('  -> Skipped: contains skip words');
+            continue;
+        }
         
-        // Look for lines that look like names (2-4 words, all letters)
-        const words = cleanLine.split(/\s+/).filter(word => word.length > 0);
+        // Look for lines that look like names
+        const words = cleanLine.split(/\s+/).filter(word => word.length > 1);
         
+        // Check for multiple word names (most common)
         if (words.length >= 2 && words.length <= 4) {
-            // Check if all words are alphabetic and reasonable length
             const isValidName = words.every(word => 
-                /^[A-Za-z]+$/.test(word) && word.length >= 2 && word.length <= 20
+                /^[A-Za-z]+$/.test(word) && word.length >= 2 && word.length <= 15
             );
             
             if (isValidName) {
-                user_name = cleanLine.toUpperCase(); // Convert to uppercase for consistency
-                console.log('Found potential name:', user_name);
+                user_name = cleanLine.toUpperCase();
+                console.log('  ✓ Found multi-word name:', user_name);
                 break;
             }
         }
         
-        // Fallback: single word names (less common but possible)
-        if (!user_name && cleanLine.length >= 3 && cleanLine.length <= 30 && /^[A-Za-z\s]+$/.test(cleanLine)) {
-            const wordCount = cleanLine.split(/\s+/).length;
-            if (wordCount === 1 && cleanLine.length >= 5) {
-                user_name = cleanLine.toUpperCase();
-                console.log('Found fallback name:', user_name);
+        // Check for single word names (fallback)
+        if (!user_name && words.length === 1 && words[0].length >= 4) {
+            const word = words[0];
+            if (/^[A-Za-z]+$/.test(word)) {
+                user_name = word.toUpperCase();
+                console.log('  ✓ Found single-word name:', user_name);
             }
         }
     }
     
+    // Strategy 2: Look for names on the same line as labels (e.g., "FULL NAMES: JOHN DOE")
+    if (!user_name) {
+        console.log('Strategy 2: Looking for names after colons or labels...');
+        for (let line of lines) {
+            const cleanLine = line.trim();
+            
+            // Look for patterns like "FULL NAMES: ACTUAL NAME" or "NAME: ACTUAL NAME"
+            const colonMatch = cleanLine.match(/(?:full\s*names?|names?)\s*:?\s*(.+)/i);
+            if (colonMatch && colonMatch[1]) {
+                const potentialName = colonMatch[1].trim().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ');
+                const nameWords = potentialName.split(/\s+/).filter(word => word.length > 1);
+                
+                if (nameWords.length >= 2 && nameWords.length <= 4) {
+                    const isValidName = nameWords.every(word => 
+                        /^[A-Za-z]+$/.test(word) && word.length >= 2 && word.length <= 20
+                    );
+                    
+                    if (isValidName) {
+                        user_name = potentialName.toUpperCase();
+                        console.log('  ✓ Found name after colon:', user_name);
+                        break;
+                    }
+                }
+            }
+            
+            // Look for any line with multiple capitalized words that aren't labels
+            const words = cleanLine.split(/\s+/).filter(word => 
+                word.length > 2 && 
+                /^[A-Z][A-Za-z]+$/.test(word) && 
+                !skipWords.includes(word.toLowerCase()) &&
+                !word.toLowerCase().includes('name') &&
+                !word.toLowerCase().includes('full')
+            );
+            
+            if (words.length >= 2 && words.length <= 4) {
+                const testName = words.join(' ');
+                // Make sure it's not just repeated words or obvious non-names
+                const uniqueWords = [...new Set(words.map(w => w.toLowerCase()))];
+                if (uniqueWords.length >= 2) {
+                    user_name = testName.toUpperCase();
+                    console.log('  ✓ Found capitalized name:', user_name);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Strategy 3: Look for any reasonable text that could be a name
+    if (!user_name) {
+        console.log('Strategy 3: Looking for any reasonable name candidates...');
+        for (let line of lines) {
+            const cleanLine = line.trim().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ');
+            
+            // Skip obvious non-names
+            if (!cleanLine || cleanLine.length < 6 || cleanLine.length > 40) continue;
+            if (/\d/.test(cleanLine)) continue;
+            
+            const lowerLine = cleanLine.toLowerCase();
+            if (skipWords.some(word => lowerLine.includes(word))) continue;
+            if (lowerLine.includes('name') || lowerLine.includes('full')) continue;
+            
+            const words = cleanLine.split(/\s+/).filter(word => word.length > 1);
+            
+            // Look for 2-3 words that could be a name
+            if (words.length >= 2 && words.length <= 3) {
+                const couldBeName = words.every(word => 
+                    /^[A-Za-z]+$/.test(word) && 
+                    word.length >= 3 && 
+                    word.length <= 20
+                );
+                
+                if (couldBeName) {
+                    user_name = cleanLine.toUpperCase();
+                    console.log('  ✓ Found fallback name candidate:', user_name);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Clean and fix the extracted name
+    if (user_name) {
+        user_name = cleanExtractedName(user_name);
+    }
+    
     console.log('Final extracted name:', user_name);
+    console.log('Final extracted ID:', user_nationalId);
     
     // Extract date of birth (various formats)
     const dobPatterns = [
@@ -293,6 +487,75 @@ function extractUserDataFromId(extractedText) {
         user_nationalId,
         dateOfBirth
     };
+}
+
+// Helper function to clean and fix extracted names
+function cleanExtractedName(name) {
+    if (!name) return name;
+    
+    console.log('Cleaning name:', name);
+    
+    // Remove extra spaces and normalize
+    let cleaned = name.trim().replace(/\s+/g, ' ').toUpperCase();
+    
+    // Fix common OCR splitting issues
+    const fixes = [
+        // Common name fixes - add more as you encounter them
+        ['OL IVE', 'OLIVE'],
+        ['JO HN', 'JOHN'],
+        ['MAR Y', 'MARY'],
+        ['DAV ID', 'DAVID'],
+        ['PET ER', 'PETER'],
+        ['ANN E', 'ANNE'],
+        ['JA MES', 'JAMES'],
+        ['ROB ERT', 'ROBERT'],
+        ['MICH AEL', 'MICHAEL'],
+        ['CHRIST INE', 'CHRISTINE'],
+        ['CHRIST OPHER', 'CHRISTOPHER'],
+        ['ELIZ ABETH', 'ELIZABETH'],
+        
+        // Fix single letter splits in common positions
+        [/\b([A-Z])\s+([A-Z]{2,})\b/g, '$1$2'], // "A NTHONY" -> "ANTHONY"
+        [/\b([A-Z]{2,})\s+([A-Z])\b/g, '$1$2'], // "OLIVE S" -> "OLIVES" (only if makes sense)
+    ];
+    
+    // Apply specific fixes first
+    for (let [pattern, replacement] of fixes) {
+        if (typeof pattern === 'string') {
+            cleaned = cleaned.replace(new RegExp(pattern, 'g'), replacement);
+        } else {
+            cleaned = cleaned.replace(pattern, replacement);
+        }
+    }
+    
+    // Additional cleaning: fix obvious splits in the middle of words
+    // Look for single letters followed by longer segments
+    cleaned = cleaned.replace(/\b([A-Z])\s+([A-Z]{3,})\b/g, (match, single, rest) => {
+        // Only join if it creates a reasonable word length (5-15 chars)
+        const combined = single + rest;
+        if (combined.length >= 4 && combined.length <= 15) {
+            console.log(`  Fixed split: "${single} ${rest}" -> "${combined}"`);
+            return combined;
+        }
+        return match;
+    });
+    
+    // Fix splits within obvious name parts (2-letter + 2+ letters)
+    cleaned = cleaned.replace(/\b([A-Z]{2})\s+([A-Z]{2,})\b/g, (match, first, second) => {
+        const combined = first + second;
+        // Only join if it creates a reasonable name length
+        if (combined.length >= 4 && combined.length <= 15) {
+            console.log(`  Fixed split: "${first} ${second}" -> "${combined}"`);
+            return combined;
+        }
+        return match;
+    });
+    
+    // Clean up any remaining multiple spaces
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    console.log('Cleaned name result:', cleaned);
+    return cleaned;
 }
 
 // Helper function to check for Kenyan ID keywords

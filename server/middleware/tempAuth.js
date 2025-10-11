@@ -10,11 +10,12 @@ exports.verifyTempToken = (req, res, next) => {
         const token = auth.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        if(decoded.step !== 'pin_setup') {
+        if(!['pin_setup', 'complete_registration'].includes(decoded.step)) {
             return res.status(403).json({message: "Invalid token type"});
         }
         
         req.userId = decoded.id;
+        req.step = decoded.step;  // Pass the step to the controller
         next();
     }catch(error){
         res.status(403).json({ message: "Invalid temp token" });

@@ -1,4 +1,4 @@
-const { sendMessage, resetChat, deleteSession } = require('../services/geminiService');
+const { sendMessage, getFinancialAdvice, resetChat, deleteSession } = require('../services/geminiService');
 
 /**
  * Handle chat message from user
@@ -31,6 +31,44 @@ const handleChat = async (req, res) => {
         console.error('Error in handleChat:', error);
         res.status(500).json({ 
             error: 'Failed to process message',
+            details: error.message 
+        });
+    }
+};
+
+/**
+ * Handle financial advice requests with user profile
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const handleFinancialAdvice = async (req, res) => {
+    try {
+        const { query, message, question, userProfile = {} } = req.body;
+        
+        // Accept query, message, or question as the financial query
+        const financialQuery = query || message || question;
+        
+        // Validate input
+        if (!financialQuery || typeof financialQuery !== 'string' || financialQuery.trim() === '') {
+            return res.status(400).json({ 
+                error: 'Financial query is required and must be a non-empty string' 
+            });
+        }
+
+        // Get financial advice using RAG
+        const advice = await getFinancialAdvice(financialQuery, userProfile);
+        
+        res.json({ 
+            advice: advice,
+            query: financialQuery,
+            userProfile: userProfile,
+            timestamp: new Date().toISOString(),
+            source: 'GKash Financial Advisor (Kenyan Market)'
+        });
+    } catch (error) {
+        console.error('Error in handleFinancialAdvice:', error);
+        res.status(500).json({ 
+            error: 'Failed to generate financial advice',
             details: error.message 
         });
     }
@@ -113,6 +151,7 @@ const healthCheck = (req, res) => {
 
 module.exports = {
     handleChat,
+    handleFinancialAdvice,
     handleReset,
     handleDeleteSession,
     healthCheck

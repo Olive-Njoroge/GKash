@@ -2,42 +2,42 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const kenyaFinanceKnowledgeBase = require('./kenyaFinanceKnowledgeBase');
 
 console.log("API Key loaded:", process.env.GEMINI_API_KEY ? "✅ Yes" : "❌ No");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// System instruction to limit responses to money market funds only
-const SYSTEM_INSTRUCTION = `You are a specialized financial assistant that ONLY answers questions about money market funds. 
+// Enhanced system instruction for comprehensive Kenyan finance expertise
+const SYSTEM_INSTRUCTION = `You are GKash Financial Advisor, Kenya's most knowledgeable AI financial expert specializing in the Kenyan financial market.
 
-RESPONSE FORMAT RULES:
-- Keep responses SHORT and CONCISE (maximum 2-3 sentences)
-- Use simple, clear language that's easy to read
-- Avoid long bullet points and detailed step-by-step lists
-- Get straight to the point without unnecessary details
-- If asked for steps, provide only 2-3 key points maximum
+🇰🇪 YOUR EXPERTISE COVERS:
+- Money Market Funds (MMFs): CIC, Zimele, ICEA, Britam and others
+- Stock Market: NSE listed companies, sectors, trading, blue-chips like Safaricom, Equity, KCB
+- Banking: KCB, Equity, Co-op Bank, lending rates, deposit rates, mobile banking
+- Government Securities: Treasury Bills, Treasury Bonds, Infrastructure Bonds
+- Insurance: Life, General, Health insurance from Jubilee, Old Mutual, CIC
+- Economic Indicators: GDP, inflation, interest rates, CBK policies
+- Investment Strategies: Portfolio diversification, risk management for Kenyan market
 
-Your knowledge includes:
-- What money market funds are and how they work
-- Types of money market funds (government, prime, tax-exempt)
-- Benefits and risks of money market funds
-- Money market fund regulations and rules
-- Yields, returns, and performance
-- Comparison with other investment vehicles
-- How to invest in money market funds
-- Money market fund fees and expenses
-- Liquidity and redemption processes
-- NAV (Net Asset Value) and stability
+RESPONSE STYLE:
+- Keep responses CONCISE and PRACTICAL (2-4 sentences maximum)
+- Use specific Kenyan examples and current market data when available
+- Mention actual company names, rates, and figures from Kenya
+- Be conversational but professional
+- Focus on actionable advice for Kenyan investors
 
-If a user asks about ANY topic that is NOT directly related to money market funds, politely decline and redirect them back to money market fund topics. 
+ALWAYS PRIORITIZE:
+1. Current Kenyan market conditions and rates
+2. Specific product recommendations with real names
+3. Practical steps for Kenyan investors
+4. Risk warnings appropriate to Kenya's market
 
-Example responses for off-topic questions:
-- "I can only help with money market funds. What would you like to know about them?"
-- "That's outside my expertise. I specialize in money market funds only."
+If asked about non-financial topics, politely redirect: "I specialize in Kenyan finance and investments. What financial topic can I help you with?"
 
-Always be professional, helpful, and conversational when discussing money market fund topics, but keep it brief.`;
+Remember: You're helping Kenyan investors make informed decisions about their money in the local market.`;
 
-// Initialize the model with system instruction
+// Initialize the model with system instruction - using working model
 const model = genAI.getGenerativeModel({ 
     model: "gemini-2.0-flash-exp",
     systemInstruction: SYSTEM_INSTRUCTION
@@ -45,6 +45,95 @@ const model = genAI.getGenerativeModel({
 
 // Store chat sessions per user/session
 const chatSessions = new Map();
+
+/**
+ * RAG: Search knowledge base for relevant context
+ * @param {string} query - User's question
+ * @returns {string} Relevant context from knowledge base
+ */
+const searchKnowledgeBase = (query) => {
+    const lowerQuery = query.toLowerCase();
+    let relevantContext = [];
+
+    // Search for Money Market Funds context
+    if (lowerQuery.includes('mmf') || lowerQuery.includes('money market') || 
+        lowerQuery.includes('cic') || lowerQuery.includes('zimele') || 
+        lowerQuery.includes('icea') || lowerQuery.includes('britam')) {
+        
+        relevantContext.push(`MONEY MARKET FUNDS IN KENYA:
+        ${kenyaFinanceKnowledgeBase.mmfs.overview}
+        
+        TOP MMFs: ${Object.entries(kenyaFinanceKnowledgeBase.mmfs.topFunds)
+            .map(([key, fund]) => `${fund.name}: ${fund.currentYield} yield, Min: KES ${fund.minimumInvestment}`)
+            .join(', ')}
+        
+        Regulation: ${kenyaFinanceKnowledgeBase.mmfs.regulations}`);
+    }
+
+    // Search for Stock Market context
+    if (lowerQuery.includes('stock') || lowerQuery.includes('nse') || lowerQuery.includes('shares') ||
+        lowerQuery.includes('safaricom') || lowerQuery.includes('equity') || lowerQuery.includes('kcb')) {
+        
+        relevantContext.push(`KENYAN STOCK MARKET (NSE):
+        ${kenyaFinanceKnowledgeBase.stockMarket.overview}
+        
+        TOP STOCKS: ${Object.entries(kenyaFinanceKnowledgeBase.stockMarket.topStocks)
+            .map(([key, stock]) => `${stock.symbol} (${stock.sector}): ${stock.description}`)
+            .join(', ')}
+        
+        Trading Hours: ${kenyaFinanceKnowledgeBase.stockMarket.tradingHours}`);
+    }
+
+    // Search for Banking context
+    if (lowerQuery.includes('bank') || lowerQuery.includes('loan') || lowerQuery.includes('deposit') ||
+        lowerQuery.includes('cbk') || lowerQuery.includes('interest rate') || lowerQuery.includes('mpesa')) {
+        
+        relevantContext.push(`KENYAN BANKING:
+        ${kenyaFinanceKnowledgeBase.banking.overview}
+        
+        CBK Rate: ${kenyaFinanceKnowledgeBase.banking.centralBankRate}
+        Lending Rates: ${kenyaFinanceKnowledgeBase.banking.lendingRates}
+        Deposit Rates: ${kenyaFinanceKnowledgeBase.banking.depositRates}
+        
+        Mobile Money: ${kenyaFinanceKnowledgeBase.banking.mobileMoneyServices.mpesa}`);
+    }
+
+    // Search for Government Securities context
+    if (lowerQuery.includes('treasury') || lowerQuery.includes('bond') || lowerQuery.includes('bill') ||
+        lowerQuery.includes('government securities') || lowerQuery.includes('t-bill')) {
+        
+        relevantContext.push(`GOVERNMENT SECURITIES:
+        Treasury Bills: ${kenyaFinanceKnowledgeBase.governmentSecurities.treasuryBills.description}
+        Current T-Bill Rates: ${kenyaFinanceKnowledgeBase.governmentSecurities.treasuryBills.currentRates}
+        
+        Treasury Bonds: ${kenyaFinanceKnowledgeBase.governmentSecurities.treasuryBonds.description}
+        Current Bond Rates: ${kenyaFinanceKnowledgeBase.governmentSecurities.treasuryBonds.currentRates}`);
+    }
+
+    // Search for Insurance context
+    if (lowerQuery.includes('insurance') || lowerQuery.includes('cover') || lowerQuery.includes('jubilee') ||
+        lowerQuery.includes('nhif') || lowerQuery.includes('medical cover')) {
+        
+        relevantContext.push(`KENYAN INSURANCE:
+        ${kenyaFinanceKnowledgeBase.insurance.overview}
+        
+        Life Insurance Leaders: ${kenyaFinanceKnowledgeBase.insurance.lifeInsurance.leaders}
+        Health Insurance: NHIF (mandatory), Private options: ${kenyaFinanceKnowledgeBase.insurance.healthInsurance.private}
+        Motor Insurance: ${kenyaFinanceKnowledgeBase.insurance.generalInsurance.motorInsurance}`);
+    }
+
+    // Search for Investment Tips
+    if (lowerQuery.includes('invest') || lowerQuery.includes('portfolio') || lowerQuery.includes('beginner') ||
+        lowerQuery.includes('how to') || lowerQuery.includes('start')) {
+        
+        relevantContext.push(`INVESTMENT GUIDANCE:
+        Beginner: ${kenyaFinanceKnowledgeBase.investmentTips.beginner}
+        Intermediate: ${kenyaFinanceKnowledgeBase.investmentTips.intermediate}
+        Risk Management: ${kenyaFinanceKnowledgeBase.investmentTips.riskManagement}`);
+    }
+
+    return relevantContext.length > 0 ? relevantContext.join('\n\n') : '';
+};
 
 /**
  * Initialize a new chat session
@@ -73,7 +162,7 @@ const getOrCreateSession = (sessionId = 'default') => {
 };
 
 /**
- * Send a message and get response
+ * Send a message and get response with RAG enhancement
  * @param {string} userMessage - The user's message
  * @param {string} sessionId - Unique identifier for the session
  * @returns {Promise<string>} AI response text
@@ -84,7 +173,23 @@ const sendMessage = async (userMessage, sessionId = 'default') => {
 
         console.log(`[${sessionId}] User message:`, userMessage);
         
-        const result = await chatSession.sendMessage(userMessage);
+        // RAG: Search knowledge base for relevant context
+        const relevantContext = searchKnowledgeBase(userMessage);
+        
+        // Enhance user message with context if found
+        let enhancedMessage = userMessage;
+        if (relevantContext) {
+            enhancedMessage = `Context from Kenya Financial Database:
+${relevantContext}
+
+User Question: ${userMessage}
+
+Please answer the user's question using the provided context about the Kenyan financial market. Keep your response concise and practical.`;
+            
+            console.log(`[${sessionId}] RAG Context added:`, relevantContext.substring(0, 200) + '...');
+        }
+        
+        const result = await chatSession.sendMessage(enhancedMessage);
         const response = await result.response;
         const text = response.text();
         
@@ -93,6 +198,52 @@ const sendMessage = async (userMessage, sessionId = 'default') => {
         return text;
     } catch (error) {
         console.error(`❌ Error sending message for session ${sessionId}:`, error.message);
+        throw error;
+    }
+};
+
+/**
+ * Get specialized financial advice for Kenyan market
+ * @param {string} query - Financial query
+ * @param {Object} userProfile - User's financial profile (optional)
+ * @returns {Promise<string>} Tailored financial advice
+ */
+const getFinancialAdvice = async (query, userProfile = {}) => {
+    try {
+        // Get relevant context
+        const context = searchKnowledgeBase(query);
+        
+        // Build enhanced query with user profile
+        let enhancedQuery = `Financial Query: ${query}`;
+        
+        if (userProfile.riskTolerance) {
+            enhancedQuery += `\nRisk Tolerance: ${userProfile.riskTolerance}`;
+        }
+        if (userProfile.investmentAmount) {
+            enhancedQuery += `\nInvestment Amount: KES ${userProfile.investmentAmount}`;
+        }
+        if (userProfile.timeHorizon) {
+            enhancedQuery += `\nTime Horizon: ${userProfile.timeHorizon}`;
+        }
+        
+        if (context) {
+            enhancedQuery = `Kenyan Financial Market Context:
+${context}
+
+${enhancedQuery}
+
+Please provide specific, actionable advice for the Kenyan market using current rates and products mentioned in the context.`;
+        }
+        
+        const result = await model.generateContent(enhancedQuery);
+        const response = await result.response;
+        const advice = response.text();
+        
+        console.log('💡 Financial advice generated for:', query);
+        return advice;
+        
+    } catch (error) {
+        console.error('❌ Error generating financial advice:', error.message);
         throw error;
     }
 };
@@ -149,14 +300,17 @@ const testConnection = async () => {
 };
 
 // Test the connection on startup (optional - comment out in production)
-testConnection().catch(err => console.error("Connection test failed:", err));
+// Temporarily disabled to save quota
+// testConnection().catch(err => console.error("Connection test failed:", err));
 
 module.exports = {
     genAI,
     sendMessage,
+    getFinancialAdvice,
     resetChat,
     initializeChat,
     deleteSession,
     testConnection,
-    getOrCreateSession
+    getOrCreateSession,
+    searchKnowledgeBase
 };

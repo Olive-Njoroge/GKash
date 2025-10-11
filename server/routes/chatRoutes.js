@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { 
     handleChat, 
+    handleFinancialAdvice,
     handleReset, 
     handleDeleteSession,
     healthCheck 
@@ -14,6 +15,14 @@ const {
  * @body    { message: string, sessionId?: string }
  */
 router.post('/chatbot/chat', handleChat);
+
+/**
+ * @route   POST /api/chatbot/financial-advice
+ * @desc    Get specialized financial advice for Kenyan market
+ * @access  Public
+ * @body    { query: string, userProfile?: { riskTolerance: string, investmentAmount: number, timeHorizon: string } }
+ */
+router.post('/chatbot/financial-advice', handleFinancialAdvice);
 
 /**
  * @route   POST /api/chatbot/reset

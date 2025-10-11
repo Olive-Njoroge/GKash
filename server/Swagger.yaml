@@ -1,8 +1,25 @@
 openapi: 3.0.0
 info:
-  title: GKash
-  version: 1.0.0
-  description: API documentation for authentication, user management, accounts, and transactions
+  title: GKash Money Market Fund API
+  version: 2.0.0
+  description: |
+    ## GKash Money Market Fund API - Complete User Verification Flow
+    
+    ### 🚀 **5-Step Registration Process:**
+    1. **📷 Upload ID + Selfie** → Verify selfie matches ID image
+    2. **📱 Add Phone Number** → Enter phone for verification  
+    3. ** Send OTP** → OTP sent to phone for verification
+    4. **✅ Verify OTP** → Phone number verified
+    5. **🔐 Create PIN** → Complete registration & auto-login
+    
+    ### 🔐 **Simple Login:**
+    - **National ID + PIN**: Simple two-field login using data extracted during registration
+    
+    ### 💡 **Key Features:**
+    - **OCR.space** for automatic ID data extraction
+    - **Face matching** verification between selfie and ID
+    - **Phone OTP** verification via Tiara Connect
+    - **Secure PIN** authentication system
 
 servers:
   - url: https://gkash.onrender.com/api
@@ -11,10 +28,82 @@ servers:
     description: Development server
 
 paths:
-  /auth/register-user:
+  /auth/register-with-id:
     post:
-      summary: Step 1 - Register user without PIN
-      tags: [Auth]
+      summary: Step 1 - Upload ID + Selfie (Verify selfie matches ID)
+      description: Upload ID document and selfie photo. System verifies that the selfie matches the person in the ID image and extracts National ID and name automatically using OCR.space.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - idImage
+                - selfie
+              properties:
+                idImage:
+                  type: string
+                  format: binary
+                  description: ID document image (JPG, PNG, JPEG, max 5MB)
+                selfie:
+                  type: string
+                  format: binary
+                  description: User selfie photo (JPG, PNG, JPEG, max 5MB)
+      responses:
+        "200":
+          description: ID processed successfully. Complete registration with extracted data.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "ID processed successfully. Complete your registration."
+                  temp_token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    description: Use this token to complete registration
+                  extractedData:
+                    type: object
+                    properties:
+                      user_name:
+                        type: string
+                        example: "JOHN DOE"
+                        description: Name extracted from ID via OCR
+                      user_nationalId:
+                        type: string
+                        example: "12345678"
+                        description: National ID extracted from ID via OCR
+                      dateOfBirth:
+                        type: string
+                        example: "1990-01-01"
+                        description: Date of birth if detected
+                  verificationScore:
+                    type: integer
+                    example: 85
+                    description: Confidence score (0-100) based on OCR accuracy
+                  autoApproved:
+                    type: boolean
+                    example: true
+                    description: Auto-approved if score ≥ 60% and faces detected
+        "400":
+          description: Invalid files, missing data, or user already exists
+        "422":
+          description: No face detected in images or insufficient image quality
+
+  /auth/add-phone:
+    post:
+      summary: Step 2 - Add Phone Number
+      description: Add phone number after ID verification. This will be used for OTP verification later.
+      tags: [Authentication]
+      security:
+        - tempTokenAuth: []
       requestBody:
         required: true
         content:
@@ -22,22 +111,210 @@ paths:
             schema:
               type: object
               required:
-                - user_name
                 - phoneNumber
-                - user_nationalId
               properties:
-                user_name:
-                  type: string
-                  example: Olive
                 phoneNumber:
                   type: string
                   example: "6789087654"
+                  description: Phone number for verification
+      responses:
+        "200":
+          description: Phone number added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Phone number added. Proceed to create PIN."
+        "400":
+          description: Invalid phone number or number already exists
+        "403":
+          description: Invalid temp token
+
+  /auth/send-otp:
+    post:
+      summary: Step 3 - Send OTP for Phone Verification
+      description: Send OTP to the user's phone number for verification.
+      tags: [Authentication]
+      security:
+        - tempTokenAuth: []
+      responses:
+        "200":
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "OTP sent to your phone number"
+                  reference:
+                    type: string
+                    example: "abc123"
+        "400":
+          description: Phone number not found
+        "403":
+          description: Invalid temp token
+
+  /auth/verify-otp:
+    post:
+      summary: Step 4 - Verify OTP
+      description: Verify the OTP code sent to phone number.
+      tags: [Authentication]
+      security:
+        - tempTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - otpCode
+              properties:
+                otpCode:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+                  example: "123456"
+                  description: 6-digit OTP code sent to phone
+      responses:
+        "201":
+          description: Registration completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration completed successfully"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    type: object
+                    properties:
+                      user_nationalId:
+                        type: string
+                        example: "12345678"
+                      user_name:
+                        type: string
+                        example: "JOHN DOE"
+                      phoneNumber:
+                        type: string
+                        example: "6789087654"
+                      idVerified:
+                        type: boolean
+                        example: true
+        "400":
+          description: Invalid or expired OTP code
+        "403":
+          description: Invalid temp token
+
+  /auth/create-pin:
+    post:
+      summary: Step 5 - Create PIN & Complete Registration
+      description: Create 4-digit PIN and complete the registration process. Returns JWT token for immediate login.
+      tags: [Authentication]
+      security:
+        - tempTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_pin
+              properties:
+                user_pin:
+                  type: string
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN for secure login
+      responses:
+        "201":
+          description: Registration completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration completed successfully! You can now login with your PIN."
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    type: object
+                    properties:
+                      user_nationalId:
+                        type: string
+                        example: "12345678"
+                        description: National ID (store in localStorage)
+                      user_name:
+                        type: string
+                        example: "JOHN DOE"
+                      phoneNumber:
+                        type: string
+                        example: "6789087654"
+                      idVerified:
+                        type: boolean
+                        example: true
+        "400":
+          description: Invalid PIN format or phone not verified
+        "403":
+          description: Invalid temp token
+
+  /auth/login:
+    post:
+      summary: 🔐 Login - National ID + PIN
+      description: |
+        **Simple two-field login**
+        
+        Users enter their National ID (extracted during registration) and 4-digit PIN.
+        
+        **User Experience:** Enter National ID + PIN → Access account  
+        **Security:** Both fields are required for authentication
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_nationalId
+                - user_pin
+              properties:
                 user_nationalId:
                   type: string
                   example: "12345678"
+                  description: National ID extracted during registration
+                user_pin:
+                  type: string
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN
       responses:
-        "201":
-          description: User registered successfully. Use temp_token to set PIN
+        "200":
+          description: Login successful
           content:
             application/json:
               schema:
@@ -45,20 +322,37 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "User registered. Please set your PIN"
-                  temp_token:
+                    example: "Login successful"
+                  token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  user_id:
-                    type: string
-                    example: "507f1f77bcf86cd799439011"
+                  user:
+                    type: object
+                    properties:
+                      user_nationalId:
+                        type: string
+                        example: "12345678"
+                      user_name:
+                        type: string
+                        example: "JOHN DOE"
+                      phoneNumber:
+                        type: string
+                        example: "6789087654"
+                      idVerified:
+                        type: boolean
+                        example: true
         "400":
-          description: User already exists
+          description: Missing required fields or registration incomplete
+        "401":
+          description: Invalid PIN
+        "404":
+          description: User not found with this phone number
 
   /auth/create-pin:
     post:
-      summary: Step 2 - Create user PIN
-      tags: [Auth]
+      summary: Legacy - Create PIN for existing users
+      description: For users who registered before ID-first flow implementation
+      tags: [Legacy Auth]
       security:
         - tempTokenAuth: []
       requestBody:
@@ -89,71 +383,10 @@ paths:
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  user:
-                    type: object
-                    properties:
-                      user_nationalId:
-                        type: string
-                      user_name:
-                        type: string
-                      phoneNumber:
-                        type: string
         "400":
           description: Invalid PIN format
         "403":
           description: Invalid temp token
-
-  /auth/login:
-    post:
-      summary: Login user with PIN
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - user_nationalId
-                - user_pin
-              properties:
-                user_nationalId:
-                  type: string
-                  example: "12345678"
-                user_pin:
-                  type: string
-                  pattern: '^[0-9]{4}$'
-                  example: "1234"
-                  description: 4-digit PIN
-      responses:
-        "200":
-          description: Login successful
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Login successful"
-                  token:
-                    type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  user:
-                    type: object
-                    properties:
-                      user_nationalId:
-                        type: string
-                      user_name:
-                        type: string
-                      phoneNumber:
-                        type: string
-        "400":
-          description: Please complete registration by setting a PIN
-        "401":
-          description: Invalid credentials
-        "404":
-          description: User not found
 
   /user:
     get:
@@ -467,6 +700,68 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+
+  /chatbot/financial-advice:
+    post:
+      summary: 🇰🇪 Get Expert Kenyan Financial Advice (RAG-Enhanced)
+      description: |
+        **AI Financial Advisor powered by RAG (Retrieval-Augmented Generation)**
+        
+        Get expert advice on Kenyan finances with comprehensive knowledge of:
+        - **Money Market Funds** (CIC, Zimele, ICEA, etc.)
+        - **NSE Stock Market** (Listed companies, sectors, performance)
+        - **Banking Products** (KCB, Equity, Co-op rates and services)  
+        - **Investment Options** (Unit trusts, bonds, treasury bills)
+        - **Economic Indicators** (Interest rates, inflation, GDP)
+        - **Fintech Services** (M-Pesa, mobile banking, digital lending)
+        
+        **How it works:** System searches extensive Kenyan financial knowledge base → Provides context to Gemini → Returns expert advice
+      tags: [🇰🇪 Financial Advisory (RAG)]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  example: "Should I invest in CIC Money Market Fund or Zimele MMF? What are the current rates?"
+                  description: Your financial question (investments, banking, stocks, etc.)
+                sessionId:
+                  type: string
+                  example: "user-financial-session"
+                  description: Optional session ID for conversation continuity
+      responses:
+        "200":
+          description: Expert financial advice with Kenyan market context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    example: "Based on current data, CIC Money Market Fund offers 12.5% while Zimele offers 12.2%. CIC has lower fees (0.5% vs 0.75%) and better liquidity. For amounts above KES 100,000, CIC would be more suitable..."
+                    description: "Comprehensive financial advice with specific Kenyan market data"
+                  relevantContext:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Money Market Funds rates comparison", "CIC MMF performance history", "Fee structures analysis"]
+                    description: "Knowledge base topics used to generate the advice"
+                  sessionId:
+                    type: string
+                    example: "user-financial-session"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid input
+        "500":
+          description: Server error
 
 components:
   securitySchemes:

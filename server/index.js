@@ -7,6 +7,7 @@ const authRoutes = require("./routes/authRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const accountRoutes = require("./routes/accountRoutes")
 const chatRoutes = require('./routes/chatRoutes')
+const verificationRoutes = require("./routes/verificationRoutes");
 
 const swaggerUi = require("swagger-ui-express");
 const Yaml = require("yamljs");
@@ -28,6 +29,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api", transactionRoutes);
 app.use("/api", accountRoutes);
 app.use("/api", chatRoutes);
+app.use("/api/verification", verificationRoutes);
 
 app.listen(process.env.PORT, () => {
     console.log(`Port is live at http://localhost:${process.env.PORT}`)

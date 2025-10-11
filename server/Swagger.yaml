@@ -5,12 +5,10 @@ info:
   description: |
     ## GKash Money Market Fund API - Complete User Verification Flow
     
-    ### 🚀 **5-Step Registration Process:**
+    ### 🚀 **3-Step Registration Process:**
     1. **📷 Upload ID + Selfie** → Verify selfie matches ID image
-    2. **📱 Add Phone Number** → Enter phone for verification  
-    3. ** Send OTP** → OTP sent to phone for verification
-    4. **✅ Verify OTP** → Phone number verified
-    5. **🔐 Create PIN** → Complete registration & auto-login
+    2. **📱 Add Phone Number** → Enter phone number for contact
+    3. **🔐 Create PIN** → Complete registration & auto-login
     
     ### 🔐 **Simple Login:**
     - **National ID + PIN**: Simple two-field login using data extracted during registration
@@ -100,7 +98,7 @@ paths:
   /auth/add-phone:
     post:
       summary: Step 2 - Add Phone Number
-      description: Add phone number after ID verification. This will be used for OTP verification later.
+      description: Add phone number after ID verification for contact purposes.
       tags: [Authentication]
       security:
         - tempTokenAuth: []
@@ -136,96 +134,9 @@ paths:
         "403":
           description: Invalid temp token
 
-  /auth/send-otp:
-    post:
-      summary: Step 3 - Send OTP for Phone Verification
-      description: Send OTP to the user's phone number for verification.
-      tags: [Authentication]
-      security:
-        - tempTokenAuth: []
-      responses:
-        "200":
-          description: OTP sent successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "OTP sent to your phone number"
-                  reference:
-                    type: string
-                    example: "abc123"
-        "400":
-          description: Phone number not found
-        "403":
-          description: Invalid temp token
-
-  /auth/verify-otp:
-    post:
-      summary: Step 4 - Verify OTP
-      description: Verify the OTP code sent to phone number.
-      tags: [Authentication]
-      security:
-        - tempTokenAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - otpCode
-              properties:
-                otpCode:
-                  type: string
-                  pattern: '^[0-9]{6}$'
-                  example: "123456"
-                  description: 6-digit OTP code sent to phone
-      responses:
-        "201":
-          description: Registration completed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "Registration completed successfully"
-                  token:
-                    type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  user:
-                    type: object
-                    properties:
-                      user_nationalId:
-                        type: string
-                        example: "12345678"
-                      user_name:
-                        type: string
-                        example: "JOHN DOE"
-                      phoneNumber:
-                        type: string
-                        example: "6789087654"
-                      idVerified:
-                        type: boolean
-                        example: true
-        "400":
-          description: Invalid or expired OTP code
-        "403":
-          description: Invalid temp token
-
   /auth/create-pin:
     post:
-      summary: Step 5 - Create PIN & Complete Registration
+      summary: Step 3 - Create PIN & Complete Registration
       description: Create 4-digit PIN and complete the registration process. Returns JWT token for immediate login.
       tags: [Authentication]
       security:

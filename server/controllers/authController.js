@@ -345,9 +345,11 @@ exports.sendOtp = async(req, res) => {
 
     } catch (error) {
         console.error('Send OTP error:', error);
+        console.error('Error details:', error.response?.data || error.message);
         res.status(500).json({
             success: false,
-            message: "Failed to send OTP. Please try again."
+            message: "Failed to send OTP. Please try again.",
+            debug: error.response?.data || error.message
         });
     }
 };
@@ -380,7 +382,7 @@ exports.addPhone = async(req, res) => {
 
         res.status(200).json({
             success: true,
-            message: "Phone number added. Proceed to create PIN."
+            message: "Phone number added successfully. Proceed to create PIN."
         });
 
     } catch (error) {
@@ -606,6 +608,7 @@ exports.createPin = async(req, res) => {
         await User.findByIdAndUpdate(userId, {
             user_pin: hashed,
             pin_set: true,
+            isRegistered: true,
             temp_token: null
         });
 

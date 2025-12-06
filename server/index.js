@@ -118,7 +118,12 @@ const customSwaggerHtml = (swaggerDoc) => {
         responseInterceptor: (res) => {
           console.log('📥', res.status, res.url);
           try {
-            let body = res.body ? JSON.parse(res.body) : (res.obj || res.data);
+            let body;
+            if (res.body) {
+              body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+            } else {
+              body = res.obj || res.data;
+            }
             if (body && typeof body === 'object') {
               if (res.url.includes('/auth/register-with-id') && body.temp_token) {
                 console.log('🔑 Temp token found');

@@ -49,7 +49,7 @@ const transactionRoutes = require("./routes/transactionRoutes");
 const accountRoutes = require("./routes/accountRoutes");
 const chatRoutes = require('./routes/chatRoutes');
 const verificationRoutes = require("./routes/verificationRoutes");
-const testRoutes = require("./routes/testRoutes");
+// const testRoutes = require("./routes/testRoutes"); // REMOVED - file doesn't exist
 
 const swaggerUi = require("swagger-ui-express");
 const Yaml = require("yamljs");
@@ -180,7 +180,7 @@ app.use("/api", transactionRoutes);
 app.use("/api", accountRoutes);
 app.use("/api", chatRoutes);
 app.use("/api/verification", verificationRoutes);
-app.use("/api", testRoutes);
+// app.use("/api", testRoutes); // REMOVED - file doesn't exist
 
 // Health check
 app.get("/", (req, res) => {

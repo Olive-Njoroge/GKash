@@ -1,21 +1,51 @@
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
-    // Basic user info (matching your existing auth controllers)
-    user_name: {type: String, required: true, trim: true},
-    user_nationalId: {type: String, required: true, unique: true, trim: true},
-    phoneNumber: {type: String, required: true, trim: true},
+    // Basic user info
+    user_name: {
+        type: String, 
+        required: true, 
+        trim: true
+    },
+    user_nationalId: {
+        type: String, 
+        required: true, 
+        unique: true, 
+        trim: true
+    },
+    phoneNumber: {
+        type: String, 
+        required: false,  // ✅ Changed to false - will be added in Step 2
+        trim: true,
+        sparse: true,     // ✅ Allow multiple null/undefined values
+        default: null
+    },
     
-    // PIN-based authentication (matching your auth system)
-    user_pin: {type: String}, // Not required initially - set during PIN creation
-    pin_set: {type: Boolean, default: false}, // Track PIN status
-    temp_token: {type: String}, // For PIN setup session
+    // PIN-based authentication
+    user_pin: {
+        type: String,
+        default: null
+    },
+    pin_set: {
+        type: Boolean, 
+        default: false
+    },
+    temp_token: {
+        type: String,
+        default: null
+    },
     
     // Registration status tracking
-    isRegistered: {type: Boolean, default: false}, // Complete registration status
-    phoneVerified: {type: Boolean, default: false}, // OTP verification status
+    isRegistered: {
+        type: Boolean, 
+        default: false
+    },
+    phoneVerified: {
+        type: Boolean, 
+        default: false
+    },
     
-    // ID Verification fields (for Cloud Vision + Cloudinary)
+    // ID Verification fields
     idVerified: {
         type: Boolean,
         default: false
@@ -31,7 +61,7 @@ const userSchema = new mongoose.Schema({
             default: null
         },
         
-        // OCR extracted text from Cloud Vision
+        // OCR extracted text
         extractedText: {
             type: String,
             default: null
@@ -46,7 +76,7 @@ const userSchema = new mongoose.Schema({
             hasValidIdKeywords: { type: Boolean, default: false }
         },
         
-        // Verification score (0-100) for auto-approval at 60%+
+        // Verification score (0-100)
         verificationScore: {
             type: Number,
             default: 0,
@@ -81,7 +111,7 @@ const userSchema = new mongoose.Schema({
             default: null
         },
         
-        // Admin review (optional - for manual reviews)
+        // Admin review (optional)
         reviewedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
@@ -109,6 +139,13 @@ const userSchema = new mongoose.Schema({
     }
 }, {timestamps: true});
 
+// Add unique index on phoneNumber only for non-null values
+userSchema.index({ phoneNumber: 1 }, { 
+    unique: true, 
+    sparse: true,
+    partialFilterExpression: { phoneNumber: { $type: "string", $ne: null } }
+});
+
 // Method to check if user is fully verified
 userSchema.methods.isVerified = function() {
     return this.idVerified === true && this.idVerification.status === 'approved';
@@ -123,6 +160,14 @@ userSchema.methods.getVerificationStatus = function() {
         submittedAt: this.idVerification.submittedAt,
         verifiedAt: this.idVerification.verifiedAt
     };
+};
+
+// Method to check if registration is complete
+userSchema.methods.isRegistrationComplete = function() {
+    return this.phoneNumber && 
+           this.phoneNumber !== 'TEMP_PHONE' && 
+           this.pin_set && 
+           this.isRegistered;
 };
 
 // Virtual for full verification details (admin use)

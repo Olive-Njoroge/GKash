@@ -1,17 +1,742 @@
+# openapi: 3.0.0
+# info:
+#   title: GKash Money Market Fund API
+#   version: 2.1.0
+#   description: |
+#     ## GKash Money Market Fund API - Complete Financial Platform
+    
+#     ### 🚀 **3-Step Registration Process:**
+#     1. **📷 Upload ID + Selfie** → OCR extracts National ID and name automatically
+#     2. **📱 Add Phone Number** → Verify phone via OTP (handled by frontend)
+#     3. **🔐 Create PIN** → Complete registration & receive JWT token
+    
+#     ### 🔐 **Simple Login:**
+#     - **National ID + PIN**: Two-field login using data extracted during registration
+    
+#     ### 💰 **Multi-Currency Payment System:**
+#     - **KES (Kenyan Shillings)**: M-Pesa, cards, bank transfers
+#     - **USD (US Dollars)**: International payments via cards/banks
+#     - **NGN (Nigerian Naira)**: Full Paystack features including USSD
+    
+#     ### 🤖 **AI-Powered Money Market Chatbot:**
+#     - Specialized knowledge about money market funds
+#     - Conversational sessions with memory
+#     - Concise, easy-to-read responses
+    
+#     ### 💡 **Key Features:**
+#     - **OCR.space** for automatic ID data extraction
+#     - **Cloudinary** for secure image storage
+#     - **Phone OTP** verification (external via Tiara Connect)
+#     - **Secure PIN** authentication with bcrypt
+#     - **Unified transaction system** for all payment methods
+#     - **Real-time webhook** processing for payments
+
+# servers:
+#   - url: https://gkash.onrender.com/api
+#     description: Production server
+#   - url: http://localhost:3000/api
+#     description: Development server
+
+# paths:
+#   /auth/register-with-id:
+#     post:
+#       summary: Step 1 - Upload ID + Selfie (OCR extraction)
+#       description: |
+#         Upload ID document and selfie photo. System automatically extracts:
+#         - **National ID number** using OCR.space
+#         - **Full name** from ID card
+#         - **Date of birth** (if visible)
+        
+#         Images are stored securely in Cloudinary. Returns temporary token valid for 30 minutes to complete registration.
+#       tags: [Authentication]
+#       requestBody:
+#         required: true
+#         content:
+#           multipart/form-data:
+#             schema:
+#               type: object
+#               required:
+#                 - idImage
+#                 - selfie
+#               properties:
+#                 idImage:
+#                   type: string
+#                   format: binary
+#                   description: ID document image (JPG, PNG, JPEG, max 5MB)
+#                 selfie:
+#                   type: string
+#                   format: binary
+#                   description: User selfie photo (JPG, PNG, JPEG, max 5MB)
+#       responses:
+#         "201":
+#           description: ID processed successfully. Use temp_token to complete registration.
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: true
+#                   message:
+#                     type: string
+#                     example: "✅ ID verified successfully! Please complete your registration."
+#                   temp_token:
+#                     type: string
+#                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+#                     description: Temporary token (30min expiry) - use in Authorization header for next steps
+#                   user_id:
+#                     type: string
+#                     example: "674d1234567890abcdef"
+#                   verified:
+#                     type: boolean
+#                     example: true
+#                     description: Auto-verified if score ≥ 60%
+#                   score:
+#                     type: integer
+#                     example: 85
+#                     description: Verification confidence score (0-100)
+#                   extractedData:
+#                     type: object
+#                     properties:
+#                       user_name:
+#                         type: string
+#                         example: "JOHN DOE"
+#                         description: Name extracted from ID via OCR
+#                       user_nationalId:
+#                         type: string
+#                         example: "12345678"
+#                         description: National ID extracted from ID via OCR
+#                       dateOfBirth:
+#                         type: string
+#                         example: "01-01-1990"
+#                         description: Date of birth if detected
+#                   checks:
+#                     type: object
+#                     properties:
+#                       hasName:
+#                         type: boolean
+#                         example: true
+#                       hasIdNumber:
+#                         type: boolean
+#                         example: true
+#                       hasDateOfBirth:
+#                         type: boolean
+#                         example: true
+#                       hasValidIdKeywords:
+#                         type: boolean
+#                         example: true
+#                       hasFaceInId:
+#                         type: boolean
+#                         example: true
+#                       hasFaceInSelfie:
+#                         type: boolean
+#                         example: true
+#         "400":
+#           description: Invalid files, missing images, or user already exists
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: false
+#                   message:
+#                     type: string
+#                     example: "User with this ID number already exists"
+#         "500":
+#           description: Server error or OCR failure
+
+#   /auth/add-phone:
+#     post:
+#       summary: Step 2 - Add Phone Number
+#       description: |
+#         Add phone number after ID verification. 
+        
+#         **Note:** OTP verification is handled by your frontend using external service (Tiara Connect).
+#         This endpoint only stores the phone number.
+#       tags: [Authentication]
+#       security:
+#         - tempTokenAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - phoneNumber
+#               properties:
+#                 phoneNumber:
+#                   type: string
+#                   pattern: '^[0-9]{10}$'
+#                   example: "0712345678"
+#                   description: 10-digit phone number (Kenyan format)
+#       responses:
+#         "200":
+#           description: Phone number added successfully
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: true
+#                   message:
+#                     type: string
+#                     example: "Phone number added successfully. Proceed to create PIN."
+#         "400":
+#           description: Invalid phone number format or already registered
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: false
+#                   message:
+#                     type: string
+#                     example: "Phone number already registered"
+#         "401":
+#           description: No authorization header provided
+#         "403":
+#           description: Invalid or expired temp token
+#         "404":
+#           description: User not found
+
+#   /auth/create-pin:
+#     post:
+#       summary: Step 3 - Create PIN & Complete Registration
+#       description: |
+#         Create 4-digit PIN to complete registration. Returns permanent JWT token for authenticated requests.
+        
+#         **After this step:**
+#         - Registration is complete
+#         - User can login with National ID + PIN
+#         - Temp token is invalidated
+#       tags: [Authentication]
+#       security:
+#         - tempTokenAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - user_pin
+#               properties:
+#                 user_pin:
+#                   type: string
+#                   pattern: '^[0-9]{4}$'
+#                   example: "1234"
+#                   description: 4-digit PIN for secure login (hashed with bcrypt)
+#       responses:
+#         "201":
+#           description: Registration completed successfully
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: true
+#                   message:
+#                     type: string
+#                     example: "Registration completed successfully! You can now login with your PIN."
+#                   token:
+#                     type: string
+#                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+#                     description: Permanent JWT token (7 days expiry)
+#                   user:
+#                     type: object
+#                     properties:
+#                       user_nationalId:
+#                         type: string
+#                         example: "12345678"
+#                         description: National ID (save in localStorage for login)
+#                       user_name:
+#                         type: string
+#                         example: "JOHN DOE"
+#                       phoneNumber:
+#                         type: string
+#                         example: "0712345678"
+#                       idVerified:
+#                         type: boolean
+#                         example: true
+#         "400":
+#           description: Invalid PIN format
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: false
+#                   message:
+#                     type: string
+#                     example: "PIN must be exactly 4 digits"
+#         "403":
+#           description: Invalid or expired temp token
+#         "404":
+#           description: User not found
+#         "500":
+#           description: Server error
+
+#   /auth/login:
+#     post:
+#       summary: 🔐 Login - National ID + PIN
+#       description: |
+#         **Simple two-field login**
+        
+#         Users enter their National ID (extracted during registration) and 4-digit PIN.
+        
+#         **User Experience:** Enter National ID + PIN → Receive JWT token → Access account
+        
+#         **Security:** PIN is hashed with bcrypt, JWT token expires in 7 days
+#       tags: [Authentication]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - user_nationalId
+#                 - user_pin
+#               properties:
+#                 user_nationalId:
+#                   type: string
+#                   example: "12345678"
+#                   description: National ID extracted during registration
+#                 user_pin:
+#                   type: string
+#                   pattern: '^[0-9]{4}$'
+#                   example: "1234"
+#                   description: 4-digit PIN
+#       responses:
+#         "200":
+#           description: Login successful
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: true
+#                   message:
+#                     type: string
+#                     example: "Login successful"
+#                   token:
+#                     type: string
+#                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+#                     description: JWT token for authenticated requests (7 days)
+#                   user:
+#                     type: object
+#                     properties:
+#                       user_nationalId:
+#                         type: string
+#                         example: "12345678"
+#                       user_name:
+#                         type: string
+#                         example: "JOHN DOE"
+#                       phoneNumber:
+#                         type: string
+#                         example: "0712345678"
+#                       idVerified:
+#                         type: boolean
+#                         example: true
+#         "400":
+#           description: Missing required fields or registration incomplete
+#           content:
+#             application/json:
+#               schema:
+#                 type: object
+#                 properties:
+#                   success:
+#                     type: boolean
+#                     example: false
+#                   message:
+#                     type: string
+#                     example: "National ID and PIN are required"
+#         "401":
+#           description: Invalid PIN
+#         "404":
+#           description: User not found with this National ID
+#         "500":
+#           description: Server error
+
+#   /user:
+#     get:
+#       summary: Get all users
+#       tags: [Users]
+#       security:
+#         - bearerAuth: []
+#       responses:
+#         "200":
+#           description: A list of users
+
+#   /user/{id}:
+#     get:
+#       summary: Get user by ID
+#       tags: [Users]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: id
+#           schema:
+#             type: string
+#           required: true
+#       responses:
+#         "200":
+#           description: A single user object
+
+#     put:
+#       summary: Update user by ID
+#       tags: [Users]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: id
+#           schema:
+#             type: string
+#           required: true
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               properties:
+#                 user_name:
+#                   type: string
+#                 phoneNumber:
+#                   type: string
+#       responses:
+#         "200":
+#           description: User updated successfully
+
+#     delete:
+#       summary: Delete user by ID
+#       tags: [Users]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: id
+#           schema:
+#             type: string
+#           required: true
+#       responses:
+#         "200":
+#           description: User deleted successfully
+
+#   /accounts:
+#     post:
+#       summary: Create a new account
+#       tags: [Accounts]
+#       security:
+#         - bearerAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - account_type
+#               properties:
+#                 account_type:
+#                   type: string
+#                   enum: ["balanced fund", "fixed income fund", "money market fund", "stock market"]
+#                   example: balanced fund
+#       responses:
+#         "201":
+#           description: Account created successfully
+
+#     get:
+#       summary: Get all accounts for logged-in user
+#       tags: [Accounts]
+#       security:
+#         - bearerAuth: []
+#       responses:
+#         "200":
+#           description: List of accounts
+
+#   /accounts/{id}:
+#     get:
+#       summary: Get account by ID
+#       tags: [Accounts]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: id
+#           schema:
+#             type: string
+#           required: true
+#       responses:
+#         "200":
+#           description: Account object
+
+#     delete:
+#       summary: Delete account by ID
+#       tags: [Accounts]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: id
+#           schema:
+#             type: string
+#           required: true
+#       responses:
+#         "200":
+#           description: Account deleted successfully
+
+#   /transactions:
+#     post:
+#       summary: Create manual balance transaction (Admin/Direct)
+#       description: |
+#         Create a manual balance adjustment (not via payment gateway).
+#         This is for direct balance changes, admin adjustments, or internal transfers.
+#         For payment gateway deposits, use `/payments/deposit/initialize` instead.
+#       tags: [Transactions]
+#       security:
+#         - bearerAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - transaction_type
+#                 - amount
+#               properties:
+#                 transaction_type:
+#                   type: string
+#                   enum: [deposit, withdraw]
+#                   example: deposit
+#                 amount:
+#                   type: number
+#                   example: 1000
+#       responses:
+#         "201":
+#           description: Manual transaction successful
+
+#     get:
+#       summary: Get all transactions for authenticated user
+#       tags: [Transactions]
+#       security:
+#         - bearerAuth: []
+#       responses:
+#         "200":
+#           description: List of transactions
+
+#   /transactions/deposit:
+#     post:
+#       summary: Initialize a deposit via Paystack
+#       description: |
+#         Add money to your account using Paystack payment gateway.
+#         Supports multiple currencies: KES (M-Pesa), USD, NGN.
+#       tags: [Transactions]
+#       security:
+#         - bearerAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - amount
+#               properties:
+#                 amount:
+#                   type: number
+#                   example: 1000
+#                 email:
+#                   type: string
+#                   format: email
+#                   example: "user@example.com"
+#                 phone:
+#                   type: string
+#                   example: "+254712345678"
+#                 currency:
+#                   type: string
+#                   enum: ["KES", "USD", "NGN"]
+#                   default: "KES"
+#                 callback_url:
+#                   type: string
+#                   example: "https://your-frontend.com/payment/callback"
+#       responses:
+#         "201":
+#           description: Payment initialized successfully
+
+#   /transactions/withdraw:
+#     post:
+#       summary: Initialize a withdrawal
+#       tags: [Transactions]
+#       security:
+#         - bearerAuth: []
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - amount
+#                 - bank_code
+#                 - account_number
+#               properties:
+#                 amount:
+#                   type: number
+#                   example: 1000
+#                 bank_code:
+#                   type: string
+#                   example: "001"
+#                 account_number:
+#                   type: string
+#                   example: "1234567890"
+#       responses:
+#         "201":
+#           description: Withdrawal initiated successfully
+
+#   /transactions/verify/{reference}:
+#     get:
+#       summary: Verify a payment transaction
+#       tags: [Transactions]
+#       security:
+#         - bearerAuth: []
+#       parameters:
+#         - in: path
+#           name: reference
+#           schema:
+#             type: string
+#           required: true
+#       responses:
+#         "200":
+#           description: Payment verified successfully
+
+#   /transactions/webhook:
+#     post:
+#       summary: Handle Paystack webhook notifications
+#       tags: [Transactions]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#       responses:
+#         "200":
+#           description: Webhook processed successfully
+
+#   /chatbot/chat:
+#     post:
+#       summary: Send a message to the money market funds chatbot
+#       tags: [Chatbot]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - message
+#               properties:
+#                 message:
+#                   type: string
+#                   example: "What are money market funds?"
+#                 sessionId:
+#                   type: string
+#                   example: "user-123-session"
+#       responses:
+#         "200":
+#           description: Chatbot response
+
+#   /chatbot/reset:
+#     post:
+#       summary: Reset chatbot conversation
+#       tags: [Chatbot]
+#       responses:
+#         "200":
+#           description: Conversation reset successfully
+
+#   /chatbot/session:
+#     delete:
+#       summary: Delete a specific chat session
+#       tags: [Chatbot]
+#       responses:
+#         "200":
+#           description: Session deleted successfully
+
+#   /chatbot/health:
+#     get:
+#       summary: Health check for chatbot service
+#       tags: [Chatbot]
+#       responses:
+#         "200":
+#           description: Service is healthy
+
+#   /chatbot/financial-advice:
+#     post:
+#       summary: 🇰🇪 Get Expert Kenyan Financial Advice (RAG-Enhanced)
+#       tags: [🇰🇪 Financial Advisory (RAG)]
+#       requestBody:
+#         required: true
+#         content:
+#           application/json:
+#             schema:
+#               type: object
+#               required:
+#                 - message
+#               properties:
+#                 message:
+#                   type: string
+#                   example: "Should I invest in CIC Money Market Fund?"
+#                 sessionId:
+#                   type: string
+#                   example: "user-financial-session"
+#       responses:
+#         "200":
+#           description: Expert financial advice
+
+# components:
+#   securitySchemes:
+#     bearerAuth:
+#       type: http
+#       scheme: bearer
+#       bearerFormat: JWT
+#       description: JWT token for authenticated requests (7 days expiry)
+#     tempTokenAuth:
+#       type: http
+#       scheme: bearer
+#       bearerFormat: JWT
+#       description: Temporary token for registration completion (30 minutes expiry)
+
+
 openapi: 3.0.0
 info:
   title: GKash Money Market Fund API
-  version: 2.1.0
+  version: 3.0.0
   description: |
-    ## GKash Money Market Fund API - Complete Financial Platform
+    ## GKash Money Market Fund API - Simplified Financial Platform
     
-    ### 🚀 **3-Step Registration Process:**
-    1. **📷 Upload ID + Selfie** → OCR extracts National ID and name automatically
-    2. **📱 Add Phone Number** → Verify phone via OTP (handled by frontend)
-    3. **🔐 Create PIN** → Complete registration & receive JWT token
+    ### 🚀 **Simple Registration:**
+    - **Name + Email + PIN** → Instant registration with JWT token
     
     ### 🔐 **Simple Login:**
-    - **National ID + PIN**: Two-field login using data extracted during registration
+    - **Email + PIN** → Access your account
     
     ### 💰 **Multi-Currency Payment System:**
     - **KES (Kenyan Shillings)**: M-Pesa, cards, bank transfers
@@ -24,10 +749,9 @@ info:
     - Concise, easy-to-read responses
     
     ### 💡 **Key Features:**
-    - **OCR.space** for automatic ID data extraction
-    - **Cloudinary** for secure image storage
-    - **Phone OTP** verification (external via Tiara Connect)
+    - **Instant registration** - no ID upload required
     - **Secure PIN** authentication with bcrypt
+    - **JWT tokens** with 7-day expiry
     - **Unified transaction system** for all payment methods
     - **Real-time webhook** processing for payments
 
@@ -38,127 +762,21 @@ servers:
     description: Development server
 
 paths:
-  /auth/register-with-id:
+  /auth/register:
     post:
-      summary: Step 1 - Upload ID + Selfie (OCR extraction)
+      summary: 📝 Register - Name, Email, PIN
       description: |
-        Upload ID document and selfie photo. System automatically extracts:
-        - **National ID number** using OCR.space
-        - **Full name** from ID card
-        - **Date of birth** (if visible)
+        Simple one-step registration. Provide your name, email, and 4-digit PIN.
         
-        Images are stored securely in Cloudinary. Returns temporary token valid for 30 minutes to complete registration.
-      tags: [Authentication]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-                - idImage
-                - selfie
-              properties:
-                idImage:
-                  type: string
-                  format: binary
-                  description: ID document image (JPG, PNG, JPEG, max 5MB)
-                selfie:
-                  type: string
-                  format: binary
-                  description: User selfie photo (JPG, PNG, JPEG, max 5MB)
-      responses:
-        "201":
-          description: ID processed successfully. Use temp_token to complete registration.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "✅ ID verified successfully! Please complete your registration."
-                  temp_token:
-                    type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    description: Temporary token (30min expiry) - use in Authorization header for next steps
-                  user_id:
-                    type: string
-                    example: "674d1234567890abcdef"
-                  verified:
-                    type: boolean
-                    example: true
-                    description: Auto-verified if score ≥ 60%
-                  score:
-                    type: integer
-                    example: 85
-                    description: Verification confidence score (0-100)
-                  extractedData:
-                    type: object
-                    properties:
-                      user_name:
-                        type: string
-                        example: "JOHN DOE"
-                        description: Name extracted from ID via OCR
-                      user_nationalId:
-                        type: string
-                        example: "12345678"
-                        description: National ID extracted from ID via OCR
-                      dateOfBirth:
-                        type: string
-                        example: "01-01-1990"
-                        description: Date of birth if detected
-                  checks:
-                    type: object
-                    properties:
-                      hasName:
-                        type: boolean
-                        example: true
-                      hasIdNumber:
-                        type: boolean
-                        example: true
-                      hasDateOfBirth:
-                        type: boolean
-                        example: true
-                      hasValidIdKeywords:
-                        type: boolean
-                        example: true
-                      hasFaceInId:
-                        type: boolean
-                        example: true
-                      hasFaceInSelfie:
-                        type: boolean
-                        example: true
-        "400":
-          description: Invalid files, missing images, or user already exists
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
-                    example: "User with this ID number already exists"
-        "500":
-          description: Server error or OCR failure
-
-  /auth/add-phone:
-    post:
-      summary: Step 2 - Add Phone Number
-      description: |
-        Add phone number after ID verification. 
+        **Returns:**
+        - JWT token (valid for 7 days)
+        - User details
         
-        **Note:** OTP verification is handled by your frontend using external service (Tiara Connect).
-        This endpoint only stores the phone number.
+        **Requirements:**
+        - Valid email address
+        - 4-digit numeric PIN
+        - Unique email (not already registered)
       tags: [Authentication]
-      security:
-        - tempTokenAuth: []
       requestBody:
         required: true
         content:
@@ -166,77 +784,27 @@ paths:
             schema:
               type: object
               required:
-                - phoneNumber
-              properties:
-                phoneNumber:
-                  type: string
-                  pattern: '^[0-9]{10}$'
-                  example: "0712345678"
-                  description: 10-digit phone number (Kenyan format)
-      responses:
-        "200":
-          description: Phone number added successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "Phone number added successfully. Proceed to create PIN."
-        "400":
-          description: Invalid phone number format or already registered
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  message:
-                    type: string
-                    example: "Phone number already registered"
-        "401":
-          description: No authorization header provided
-        "403":
-          description: Invalid or expired temp token
-        "404":
-          description: User not found
-
-  /auth/create-pin:
-    post:
-      summary: Step 3 - Create PIN & Complete Registration
-      description: |
-        Create 4-digit PIN to complete registration. Returns permanent JWT token for authenticated requests.
-        
-        **After this step:**
-        - Registration is complete
-        - User can login with National ID + PIN
-        - Temp token is invalidated
-      tags: [Authentication]
-      security:
-        - tempTokenAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
+                - user_name
+                - email
                 - user_pin
               properties:
+                user_name:
+                  type: string
+                  example: "John Doe"
+                  description: Full name
+                email:
+                  type: string
+                  format: email
+                  example: "john@example.com"
+                  description: Email address (must be unique)
                 user_pin:
                   type: string
                   pattern: '^[0-9]{4}$'
                   example: "1234"
-                  description: 4-digit PIN for secure login (hashed with bcrypt)
+                  description: 4-digit PIN for login
       responses:
         "201":
-          description: Registration completed successfully
+          description: Registration successful
           content:
             application/json:
               schema:
@@ -247,29 +815,25 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: "Registration completed successfully! You can now login with your PIN."
+                    example: "Registration successful"
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    description: Permanent JWT token (7 days expiry)
+                    description: JWT token for authenticated requests (7 days expiry)
                   user:
                     type: object
                     properties:
-                      user_nationalId:
+                      id:
                         type: string
-                        example: "12345678"
-                        description: National ID (save in localStorage for login)
+                        example: "674d1234567890abcdef"
                       user_name:
                         type: string
-                        example: "JOHN DOE"
-                      phoneNumber:
+                        example: "John Doe"
+                      email:
                         type: string
-                        example: "0712345678"
-                      idVerified:
-                        type: boolean
-                        example: true
+                        example: "john@example.com"
         "400":
-          description: Invalid PIN format
+          description: Invalid input or email already registered
           content:
             application/json:
               schema:
@@ -280,25 +844,27 @@ paths:
                     example: false
                   message:
                     type: string
-                    example: "PIN must be exactly 4 digits"
-        "403":
-          description: Invalid or expired temp token
-        "404":
-          description: User not found
+                    examples:
+                      missing_fields:
+                        value: "Name, email, and PIN are required"
+                      invalid_pin:
+                        value: "PIN must be exactly 4 digits"
+                      invalid_email:
+                        value: "Please enter a valid email address"
+                      email_exists:
+                        value: "Email already registered"
         "500":
           description: Server error
 
   /auth/login:
     post:
-      summary: 🔐 Login - National ID + PIN
+      summary: 🔐 Login - Email + PIN
       description: |
-        **Simple two-field login**
+        Login with your email and 4-digit PIN.
         
-        Users enter their National ID (extracted during registration) and 4-digit PIN.
-        
-        **User Experience:** Enter National ID + PIN → Receive JWT token → Access account
-        
-        **Security:** PIN is hashed with bcrypt, JWT token expires in 7 days
+        **Returns:**
+        - JWT token (valid for 7 days)
+        - User details
       tags: [Authentication]
       requestBody:
         required: true
@@ -307,18 +873,19 @@ paths:
             schema:
               type: object
               required:
-                - user_nationalId
+                - email
                 - user_pin
               properties:
-                user_nationalId:
+                email:
                   type: string
-                  example: "12345678"
-                  description: National ID extracted during registration
+                  format: email
+                  example: "john@example.com"
+                  description: Your registered email
                 user_pin:
                   type: string
                   pattern: '^[0-9]{4}$'
                   example: "1234"
-                  description: 4-digit PIN
+                  description: Your 4-digit PIN
       responses:
         "200":
           description: Login successful
@@ -340,20 +907,17 @@ paths:
                   user:
                     type: object
                     properties:
-                      user_nationalId:
+                      id:
                         type: string
-                        example: "12345678"
+                        example: "674d1234567890abcdef"
                       user_name:
                         type: string
-                        example: "JOHN DOE"
-                      phoneNumber:
+                        example: "John Doe"
+                      email:
                         type: string
-                        example: "0712345678"
-                      idVerified:
-                        type: boolean
-                        example: true
+                        example: "john@example.com"
         "400":
-          description: Missing required fields or registration incomplete
+          description: Missing required fields
           content:
             application/json:
               schema:
@@ -364,11 +928,33 @@ paths:
                     example: false
                   message:
                     type: string
-                    example: "National ID and PIN are required"
+                    example: "Email and PIN are required"
         "401":
-          description: Invalid PIN
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Invalid credentials"
         "404":
-          description: User not found with this National ID
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Invalid credentials"
         "500":
           description: Server error
 
@@ -418,7 +1004,7 @@ paths:
               properties:
                 user_name:
                   type: string
-                phoneNumber:
+                email:
                   type: string
       responses:
         "200":
@@ -508,7 +1094,7 @@ paths:
       description: |
         Create a manual balance adjustment (not via payment gateway).
         This is for direct balance changes, admin adjustments, or internal transfers.
-        For payment gateway deposits, use `/payments/deposit/initialize` instead.
+        For payment gateway deposits, use `/transactions/deposit` instead.
       tags: [Transactions]
       security:
         - bearerAuth: []
@@ -691,6 +1277,14 @@ paths:
   /chatbot/financial-advice:
     post:
       summary: 🇰🇪 Get Expert Kenyan Financial Advice (RAG-Enhanced)
+      description: |
+        **AI Financial Advisor powered by RAG (Retrieval-Augmented Generation)**
+        
+        Get expert advice on Kenyan finances with comprehensive knowledge of:
+        - Money Market Funds (CIC, Zimele, ICEA, etc.)
+        - NSE Stock Market
+        - Banking Products
+        - Investment Options
       tags: [🇰🇪 Financial Advisory (RAG)]
       requestBody:
         required: true
@@ -718,8 +1312,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: JWT token for authenticated requests (7 days expiry)
-    tempTokenAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Temporary token for registration completion (30 minutes expiry)
+
+  schemas:
+    AuthFlow:
+      type: object
+      description: |
+        ## 🚀 Simple Authentication Flow
+        
+        ### Register:
+        1. `POST /auth/register` - Provide name, email, PIN
+        2. Receive JWT token immediately
+        3. Use token for all authenticated requests
+        
+        ### Login:
+        1. `POST /auth/login` - Provide email + PIN
+        2. Receive JWT token
+        3. Use token for all authenticated requests
+        
+        **No multi-step process, no ID verification, no phone OTP - just simple email & PIN!**

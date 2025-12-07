@@ -1,19 +1,19 @@
 openapi: 3.0.0
 info:
   title: GKash Money Market Fund API
-  version: 2.0.0
+  version: 2.1.0
   description: |
     ## GKash Money Market Fund API - Complete Financial Platform
     
     ### 🚀 **3-Step Registration Process:**
-    1. **📷 Upload ID + Selfie** → Verify selfie matches ID image
-    2. **📱 Add Phone Number** → Enter phone number for contact
-    3. **🔐 Create PIN** → Complete registration & auto-login
+    1. **📷 Upload ID + Selfie** → OCR extracts National ID and name automatically
+    2. **📱 Add Phone Number** → Verify phone via OTP (handled by frontend)
+    3. **🔐 Create PIN** → Complete registration & receive JWT token
     
     ### 🔐 **Simple Login:**
-    - **National ID + PIN**: Simple two-field login using data extracted during registration
+    - **National ID + PIN**: Two-field login using data extracted during registration
     
-    ### � **Multi-Currency Payment System:**
+    ### 💰 **Multi-Currency Payment System:**
     - **KES (Kenyan Shillings)**: M-Pesa, cards, bank transfers
     - **USD (US Dollars)**: International payments via cards/banks
     - **NGN (Nigerian Naira)**: Full Paystack features including USSD
@@ -23,11 +23,11 @@ info:
     - Conversational sessions with memory
     - Concise, easy-to-read responses
     
-    ### �💡 **Key Features:**
+    ### 💡 **Key Features:**
     - **OCR.space** for automatic ID data extraction
-    - **Face matching** verification between selfie and ID
-    - **Phone OTP** verification via Tiara Connect
-    - **Secure PIN** authentication system
+    - **Cloudinary** for secure image storage
+    - **Phone OTP** verification (external via Tiara Connect)
+    - **Secure PIN** authentication with bcrypt
     - **Unified transaction system** for all payment methods
     - **Real-time webhook** processing for payments
 
@@ -40,8 +40,14 @@ servers:
 paths:
   /auth/register-with-id:
     post:
-      summary: Step 1 - Upload ID + Selfie (Verify selfie matches ID)
-      description: Upload ID document and selfie photo. System verifies that the selfie matches the person in the ID image and extracts National ID and name automatically using OCR.space.
+      summary: Step 1 - Upload ID + Selfie (OCR extraction)
+      description: |
+        Upload ID document and selfie photo. System automatically extracts:
+        - **National ID number** using OCR.space
+        - **Full name** from ID card
+        - **Date of birth** (if visible)
+        
+        Images are stored securely in Cloudinary. Returns temporary token valid for 30 minutes to complete registration.
       tags: [Authentication]
       requestBody:
         required: true
@@ -62,8 +68,8 @@ paths:
                   format: binary
                   description: User selfie photo (JPG, PNG, JPEG, max 5MB)
       responses:
-        "200":
-          description: ID processed successfully. Complete registration with extracted data.
+        "201":
+          description: ID processed successfully. Use temp_token to complete registration.
           content:
             application/json:
               schema:
@@ -74,11 +80,22 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: "ID processed successfully. Complete your registration."
+                    example: "✅ ID verified successfully! Please complete your registration."
                   temp_token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    description: Use this token to complete registration
+                    description: Temporary token (30min expiry) - use in Authorization header for next steps
+                  user_id:
+                    type: string
+                    example: "674d1234567890abcdef"
+                  verified:
+                    type: boolean
+                    example: true
+                    description: Auto-verified if score ≥ 60%
+                  score:
+                    type: integer
+                    example: 85
+                    description: Verification confidence score (0-100)
                   extractedData:
                     type: object
                     properties:
@@ -92,25 +109,53 @@ paths:
                         description: National ID extracted from ID via OCR
                       dateOfBirth:
                         type: string
-                        example: "1990-01-01"
+                        example: "01-01-1990"
                         description: Date of birth if detected
-                  verificationScore:
-                    type: integer
-                    example: 85
-                    description: Confidence score (0-100) based on OCR accuracy
-                  autoApproved:
-                    type: boolean
-                    example: true
-                    description: Auto-approved if score ≥ 60% and faces detected
+                  checks:
+                    type: object
+                    properties:
+                      hasName:
+                        type: boolean
+                        example: true
+                      hasIdNumber:
+                        type: boolean
+                        example: true
+                      hasDateOfBirth:
+                        type: boolean
+                        example: true
+                      hasValidIdKeywords:
+                        type: boolean
+                        example: true
+                      hasFaceInId:
+                        type: boolean
+                        example: true
+                      hasFaceInSelfie:
+                        type: boolean
+                        example: true
         "400":
-          description: Invalid files, missing data, or user already exists
-        "422":
-          description: No face detected in images or insufficient image quality
+          description: Invalid files, missing images, or user already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "User with this ID number already exists"
+        "500":
+          description: Server error or OCR failure
 
   /auth/add-phone:
     post:
       summary: Step 2 - Add Phone Number
-      description: Add phone number after ID verification for contact purposes.
+      description: |
+        Add phone number after ID verification. 
+        
+        **Note:** OTP verification is handled by your frontend using external service (Tiara Connect).
+        This endpoint only stores the phone number.
       tags: [Authentication]
       security:
         - tempTokenAuth: []
@@ -125,8 +170,9 @@ paths:
               properties:
                 phoneNumber:
                   type: string
-                  example: "6789087654"
-                  description: Phone number for verification
+                  pattern: '^[0-9]{10}$'
+                  example: "0712345678"
+                  description: 10-digit phone number (Kenyan format)
       responses:
         "200":
           description: Phone number added successfully
@@ -140,16 +186,37 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: "Phone number added. Proceed to create PIN."
+                    example: "Phone number added successfully. Proceed to create PIN."
         "400":
-          description: Invalid phone number or number already exists
+          description: Invalid phone number format or already registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Phone number already registered"
+        "401":
+          description: No authorization header provided
         "403":
-          description: Invalid temp token
+          description: Invalid or expired temp token
+        "404":
+          description: User not found
 
   /auth/create-pin:
     post:
       summary: Step 3 - Create PIN & Complete Registration
-      description: Create 4-digit PIN and complete the registration process. Returns JWT token for immediate login.
+      description: |
+        Create 4-digit PIN to complete registration. Returns permanent JWT token for authenticated requests.
+        
+        **After this step:**
+        - Registration is complete
+        - User can login with National ID + PIN
+        - Temp token is invalidated
       tags: [Authentication]
       security:
         - tempTokenAuth: []
@@ -166,7 +233,7 @@ paths:
                   type: string
                   pattern: '^[0-9]{4}$'
                   example: "1234"
-                  description: 4-digit PIN for secure login
+                  description: 4-digit PIN for secure login (hashed with bcrypt)
       responses:
         "201":
           description: Registration completed successfully
@@ -184,26 +251,42 @@ paths:
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    description: Permanent JWT token (7 days expiry)
                   user:
                     type: object
                     properties:
                       user_nationalId:
                         type: string
                         example: "12345678"
-                        description: National ID (store in localStorage)
+                        description: National ID (save in localStorage for login)
                       user_name:
                         type: string
                         example: "JOHN DOE"
                       phoneNumber:
                         type: string
-                        example: "6789087654"
+                        example: "0712345678"
                       idVerified:
                         type: boolean
                         example: true
         "400":
-          description: Invalid PIN format or phone not verified
+          description: Invalid PIN format
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "PIN must be exactly 4 digits"
         "403":
-          description: Invalid temp token
+          description: Invalid or expired temp token
+        "404":
+          description: User not found
+        "500":
+          description: Server error
 
   /auth/login:
     post:
@@ -213,8 +296,9 @@ paths:
         
         Users enter their National ID (extracted during registration) and 4-digit PIN.
         
-        **User Experience:** Enter National ID + PIN → Access account  
-        **Security:** Both fields are required for authentication
+        **User Experience:** Enter National ID + PIN → Receive JWT token → Access account
+        
+        **Security:** PIN is hashed with bcrypt, JWT token expires in 7 days
       tags: [Authentication]
       requestBody:
         required: true
@@ -243,12 +327,16 @@ paths:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                    example: true
                   message:
                     type: string
                     example: "Login successful"
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    description: JWT token for authenticated requests (7 days)
                   user:
                     type: object
                     properties:
@@ -260,56 +348,29 @@ paths:
                         example: "JOHN DOE"
                       phoneNumber:
                         type: string
-                        example: "6789087654"
+                        example: "0712345678"
                       idVerified:
                         type: boolean
                         example: true
         "400":
           description: Missing required fields or registration incomplete
-        "401":
-          description: Invalid PIN
-        "404":
-          description: User not found with this phone number
-
-  /auth/create-pin:
-    post:
-      summary: Legacy - Create PIN for existing users
-      description: For users who registered before ID-first flow implementation
-      tags: [Legacy Auth]
-      security:
-        - tempTokenAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - user_pin
-              properties:
-                user_pin:
-                  type: string
-                  pattern: '^[0-9]{4}$'
-                  example: "1234"
-                  description: 4-digit PIN
-      responses:
-        "200":
-          description: PIN created successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                    example: false
                   message:
                     type: string
-                    example: "PIN created successfully"
-                  token:
-                    type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        "400":
-          description: Invalid PIN format
-        "403":
-          description: Invalid temp token
+                    example: "National ID and PIN are required"
+        "401":
+          description: Invalid PIN
+        "404":
+          description: User not found with this National ID
+        "500":
+          description: Server error
 
   /user:
     get:
@@ -471,40 +532,6 @@ paths:
       responses:
         "201":
           description: Manual transaction successful
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Transaction successful"
-                  transaction:
-                    type: object
-                    properties:
-                      _id:
-                        type: string
-                        example: "507f1f77bcf86cd799439011"
-                      transaction_type:
-                        type: string
-                        example: "deposit"
-                      amount:
-                        type: number
-                        example: 1000
-                      status:
-                        type: string
-                        example: "completed"
-                      payment_method:
-                        type: string
-                        example: "balance"
-                        description: "Always 'balance' for manual transactions"
-                      createdAt:
-                        type: string
-                        format: date-time
-                  balance:
-                    type: number
-                    example: 15000
-                    description: "Updated account balance"
 
     get:
       summary: Get all transactions for authenticated user
@@ -535,105 +562,28 @@ paths:
               properties:
                 amount:
                   type: number
-                  description: Amount to deposit in the selected currency
-                  examples:
-                    KES:
-                      value: 1000
-                      summary: 1,000 KES (Kenyan Shillings)
-                    USD:
-                      value: 10
-                      summary: $10 USD
-                    NGN:
-                      value: 5000
-                      summary: ₦5,000 NGN
+                  example: 1000
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                phone:
+                  type: string
+                  example: "+254712345678"
                 currency:
                   type: string
                   enum: ["KES", "USD", "NGN"]
                   default: "KES"
-                  description: |
-                    Currency code (defaults to KES if not provided):
-                    - **KES**: Kenyan Shillings - Supports M-Pesa, cards, banks
-                    - **USD**: US Dollars - International payments via cards/banks
-                    - **NGN**: Nigerian Naira - Full Paystack features
-                  examples:
-                    KES:
-                      value: "KES"
-                      summary: Kenyan Shillings (with M-Pesa)
-                    USD:
-                      value: "USD" 
-                      summary: US Dollars (International)
-                    NGN:
-                      value: "NGN"
-                      summary: Nigerian Naira (Full features)
                 callback_url:
                   type: string
                   example: "https://your-frontend.com/payment/callback"
-                  description: Optional URL to redirect after payment
       responses:
         "201":
           description: Payment initialized successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Payment initialized successfully"
-                  data:
-                    type: object
-                    properties:
-                      transaction_id:
-                        type: string
-                        example: "507f1f77bcf86cd799439011"
-                      payment_reference:
-                        type: string
-                        example: "gkash_userId_1728567890_abc123"
-                      authorization_url:
-                        type: string
-                        example: "https://checkout.paystack.com/abc123xyz"
-                      access_code:
-                        type: string
-                        example: "abc123xyz"
-                      amount:
-                        type: number
-                        example: 1000
-                      currency:
-                        type: string
-                        example: "KES"
-        "400":
-          description: Invalid input or unsupported currency
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    examples:
-                      currency_error:
-                        value: "Unsupported currency. Supported: KES, USD, NGN"
-                        summary: Currency not supported
-                      amount_error:
-                        value: "Amount is required and must be greater than 0"
-                        summary: Invalid amount
-                      paystack_error:
-                        value: "Failed to initialize payment"
-                        summary: Paystack initialization failed
-                  error:
-                    type: string
-                    example: "Currency not supported by merchant"
-        "404":
-          description: User or account not found
-        "500":
-          description: Server error
 
   /transactions/withdraw:
     post:
       summary: Initialize a withdrawal
-      description: |
-        Withdraw money from your account. Funds are deducted immediately 
-        and processed via Paystack.
       tags: [Transactions]
       security:
         - bearerAuth: []
@@ -651,53 +601,15 @@ paths:
                 amount:
                   type: number
                   example: 1000
-                  description: Amount to withdraw (must not exceed balance)
                 bank_code:
                   type: string
                   example: "001"
-                  description: Bank code for withdrawal
                 account_number:
                   type: string
                   example: "1234567890"
-                  description: Account number for withdrawal
       responses:
         "201":
           description: Withdrawal initiated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Withdrawal initiated successfully"
-                  data:
-                    type: object
-                    properties:
-                      transaction_id:
-                        type: string
-                        example: "507f1f77bcf86cd799439011"
-                      payment_reference:
-                        type: string
-                        example: "gkash_userId_1728567890_abc123"
-                      amount:
-                        type: number
-                        example: 1000
-                      currency:
-                        type: string
-                        example: "KES"
-                      status:
-                        type: string
-                        example: "pending"
-                      remaining_balance:
-                        type: number
-                        example: 4000
-        "400":
-          description: Insufficient balance or invalid input
-        "404":
-          description: User or account not found
-        "500":
-          description: Server error
 
   /transactions/verify/{reference}:
     get:
@@ -711,32 +623,9 @@ paths:
           schema:
             type: string
           required: true
-          example: "gkash_userId_1728567890_abc123"
-          description: Payment reference to verify
       responses:
         "200":
           description: Payment verified successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Payment verified successfully"
-                  transaction:
-                    type: object
-                    description: Transaction details
-                  balance:
-                    type: number
-                    example: 15000
-                    description: Updated account balance
-        "400":
-          description: Payment verification failed
-        "404":
-          description: Transaction not found
-        "500":
-          description: Server error
 
   /transactions/webhook:
     post:
@@ -748,116 +637,9 @@ paths:
           application/json:
             schema:
               type: object
-              description: Paystack webhook payload
       responses:
         "200":
           description: Webhook processed successfully
-        "400":
-          description: Invalid signature
-        "500":
-          description: Webhook processing failed
-
-
-
-    get:
-      summary: Get all transactions for authenticated user (unified system)
-      description: |
-        Retrieve all user transactions with optional filtering by payment method. 
-        This endpoint shows both manual balance changes and payment gateway transactions.
-        
-        **Note**: This is the same endpoint as `POST /transactions` but with GET method
-        for viewing transaction history.
-      tags: [Transactions]
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: query
-          name: payment_method
-          schema:
-            type: string
-            enum: ["paystack", "balance"]
-          required: false
-          description: Filter transactions by payment method
-          examples:
-            paystack:
-              value: "paystack"
-              summary: Only Paystack payments
-            balance:
-              value: "balance" 
-              summary: Only manual balance changes
-            all:
-              summary: All transactions (default)
-      responses:
-        "200":
-          description: Transactions retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Transactions retrieved successfully"
-                  transactions:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        _id:
-                          type: string
-                          example: "507f1f77bcf86cd799439011"
-                        user_id:
-                          type: string
-                          example: "507f1f77bcf86cd799439011"
-                        account_id:
-                          type: object
-                          properties:
-                            _id:
-                              type: string
-                            account_type:
-                              type: string
-                              example: "money market fund"
-                        transaction_type:
-                          type: string
-                          enum: ["deposit", "withdraw"]
-                          example: "deposit"
-                        amount:
-                          type: number
-                          example: 1000
-                        status:
-                          type: string
-                          enum: ["completed", "pending", "failed"]
-                          example: "completed"
-                        payment_method:
-                          type: string
-                          enum: ["balance", "paystack"]
-                          example: "paystack"
-                        payment_reference:
-                          type: string
-                          example: "gkash_userId_1728567890_abc123"
-                        currency:
-                          type: string
-                          example: "KES"
-                        gateway_response:
-                          type: string
-                          example: "Successful"
-                        createdAt:
-                          type: string
-                          format: date-time
-                        updatedAt:
-                          type: string
-                          format: date-time
-                  filters:
-                    type: object
-                    properties:
-                      total:
-                        type: number
-                        example: 25
-                      payment_method:
-                        type: string
-                        example: "all"
-        "500":
-          description: Server error
 
   /chatbot/chat:
     post:
@@ -875,114 +657,28 @@ paths:
                 message:
                   type: string
                   example: "What are money market funds?"
-                  description: Your question about money market funds
                 sessionId:
                   type: string
                   example: "user-123-session"
-                  description: Optional session ID for conversation continuity
       responses:
         "200":
           description: Chatbot response
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  response:
-                    type: string
-                    example: "Money market funds are low-risk investments that hold short-term securities like Treasury bills. They offer better yields than savings accounts with high liquidity."
-                    description: "Concise, easy-to-read response (2-3 sentences max)"
-                  sessionId:
-                    type: string
-                    example: "user-123-session"
-                  timestamp:
-                    type: string
-                    format: date-time
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Message is required and must be a non-empty string"
-        "500":
-          description: Server error
 
   /chatbot/reset:
     post:
-      summary: Reset chatbot conversation for a session
+      summary: Reset chatbot conversation
       tags: [Chatbot]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                sessionId:
-                  type: string
-                  example: "user-123-session"
-                  description: Session ID to reset (defaults to 'default')
       responses:
         "200":
           description: Conversation reset successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Conversation reset successfully"
-                  sessionId:
-                    type: string
-                    example: "user-123-session"
-                  timestamp:
-                    type: string
-                    format: date-time
-        "500":
-          description: Server error
 
   /chatbot/session:
     delete:
       summary: Delete a specific chat session
       tags: [Chatbot]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - sessionId
-              properties:
-                sessionId:
-                  type: string
-                  example: "user-123-session"
-                  description: Session ID to delete (cannot be 'default')
       responses:
         "200":
           description: Session deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Session deleted successfully"
-                  sessionId:
-                    type: string
-                    example: "user-123-session"
-        "400":
-          description: Invalid session ID
-        "404":
-          description: Session not found
-        "500":
-          description: Server error
 
   /chatbot/health:
     get:
@@ -991,36 +687,10 @@ paths:
       responses:
         "200":
           description: Service is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "ok"
-                  service:
-                    type: string
-                    example: "Money Market Funds Chatbot"
-                  timestamp:
-                    type: string
-                    format: date-time
 
   /chatbot/financial-advice:
     post:
       summary: 🇰🇪 Get Expert Kenyan Financial Advice (RAG-Enhanced)
-      description: |
-        **AI Financial Advisor powered by RAG (Retrieval-Augmented Generation)**
-        
-        Get expert advice on Kenyan finances with comprehensive knowledge of:
-        - **Money Market Funds** (CIC, Zimele, ICEA, etc.)
-        - **NSE Stock Market** (Listed companies, sectors, performance)
-        - **Banking Products** (KCB, Equity, Co-op rates and services)  
-        - **Investment Options** (Unit trusts, bonds, treasury bills)
-        - **Economic Indicators** (Interest rates, inflation, GDP)
-        - **Fintech Services** (M-Pesa, mobile banking, digital lending)
-        
-        **How it works:** System searches extensive Kenyan financial knowledge base → Provides context to Gemini → Returns expert advice
       tags: [🇰🇪 Financial Advisory (RAG)]
       requestBody:
         required: true
@@ -1033,40 +703,13 @@ paths:
               properties:
                 message:
                   type: string
-                  example: "Should I invest in CIC Money Market Fund or Zimele MMF? What are the current rates?"
-                  description: Your financial question (investments, banking, stocks, etc.)
+                  example: "Should I invest in CIC Money Market Fund?"
                 sessionId:
                   type: string
                   example: "user-financial-session"
-                  description: Optional session ID for conversation continuity
       responses:
         "200":
-          description: Expert financial advice with Kenyan market context
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  response:
-                    type: string
-                    example: "Based on current data, CIC Money Market Fund offers 12.5% while Zimele offers 12.2%. CIC has lower fees (0.5% vs 0.75%) and better liquidity. For amounts above KES 100,000, CIC would be more suitable..."
-                    description: "Comprehensive financial advice with specific Kenyan market data"
-                  relevantContext:
-                    type: array
-                    items:
-                      type: string
-                    example: ["Money Market Funds rates comparison", "CIC MMF performance history", "Fee structures analysis"]
-                    description: "Knowledge base topics used to generate the advice"
-                  sessionId:
-                    type: string
-                    example: "user-financial-session"
-                  timestamp:
-                    type: string
-                    format: date-time
-        "400":
-          description: Invalid input
-        "500":
-          description: Server error
+          description: Expert financial advice
 
 components:
   securitySchemes:
@@ -1074,34 +717,9 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT token for authenticated requests
+      description: JWT token for authenticated requests (7 days expiry)
     tempTokenAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Temporary token for PIN setup (15-minute expiry)
-      
-  schemas:
-    PaymentFlow:
-      type: object
-      description: |
-        ## 💰 Simple Transaction Flow
-        
-        ### Deposit Money:
-        1. `POST /transactions/deposit` - Initialize deposit with Paystack
-        2. User pays via M-Pesa/Card on Paystack
-        3. `GET /transactions/verify/{reference}` - Confirm payment
-        4. Balance updated automatically
-        
-        ### Withdraw Money:
-        1. `POST /transactions/withdraw` - Initiate withdrawal
-        2. Balance deducted immediately
-        3. Paystack processes withdrawal
-        
-        ### View Transactions:
-        - `GET /transactions` - View all your transactions
-        
-        ### Currency Support:
-        - **KES**: 1000 = KSh 1,000 (with M-Pesa)
-        - **USD**: 10 = $10 (international)
-        - **NGN**: 5000 = ₦5,000 (full features)
+      description: Temporary token for registration completion (30 minutes expiry)

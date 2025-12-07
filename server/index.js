@@ -45,7 +45,6 @@ const dotenv = require("dotenv");
 
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
-const transactionRoutes = require("./routes/transactionRoutes");
 const accountRoutes = require("./routes/accountRoutes");
 const chatRoutes = require('./routes/chatRoutes');
 const verificationRoutes = require("./routes/verificationRoutes");
@@ -181,7 +180,6 @@ app.use('/api-docs-standard', swaggerUi.serve, swaggerUi.setup(swaggerDocument))
 // API Routes
 app.use("/api", userRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api", transactionRoutes);
 app.use("/api", accountRoutes);
 app.use("/api", chatRoutes);
 app.use("/api/verification", verificationRoutes);

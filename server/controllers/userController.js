@@ -47,8 +47,8 @@ exports.getUserById = async (req, res) => {
 //Update user
 exports.updateUser = async (req, res) => {
     try {
-        const { user_name, phoneNumber, user_pin } = req.body;
-        let updateData = { user_name, phoneNumber };
+        const { user_name, email, user_pin } = req.body;
+        let updateData = { user_name, email };
 
         // If pin is provided, hash it again
         if (user_pin) {

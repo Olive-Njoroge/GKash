@@ -597,17 +597,34 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// Register - Name, Email, PIN
+// Register - Name, Email, PIN, Confirm PIN
 exports.register = async(req, res) => {
     try {
         console.log('\n📝 === REGISTER START ===');
-        const { user_name, email, user_pin } = req.body;
+        console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
+        
+        const { user_name, email, user_pin, confirm_pin } = req.body;
+        
+        console.log('🔍 Extracted values:');
+        console.log('  - user_pin:', user_pin, '(type:', typeof user_pin, ')');
+        console.log('  - confirm_pin:', confirm_pin, '(type:', typeof confirm_pin, ')');
+        console.log('  - Are they equal?', user_pin === confirm_pin);
+        console.log('  - Strict comparison:', user_pin, '===', confirm_pin, '→', user_pin === confirm_pin);
 
         // Validate required fields
-        if (!user_name || !email || !user_pin) {
+        if (!user_name || !email || !user_pin || !confirm_pin) {
             return res.status(400).json({
                 success: false,
-                message: "Name, email, and PIN are required"
+                message: "Name, email, PIN, and PIN confirmation are required"
+            });
+        }
+
+        // Check if PIN and confirmation match FIRST (before other validations)
+        if (user_pin !== confirm_pin) {
+            console.error('❌ PINs do not match');
+            return res.status(400).json({
+                success: false,
+                message: "PIN and confirmation do not match"
             });
         }
 
@@ -742,6 +759,160 @@ exports.login = async(req, res) => {
         res.status(500).json({
             success: false,
             message: "Login failed. Please try again."
+        });
+    }
+};
+
+// Change PIN - Requires current PIN and new PIN
+exports.changePin = async(req, res) => {
+    try {
+        console.log('\n🔄 === CHANGE PIN START ===');
+        const { current_pin, new_pin, confirm_new_pin } = req.body;
+        const userId = req.user.id; // From auth middleware
+
+        // Validate required fields
+        if (!current_pin || !new_pin || !confirm_new_pin) {
+            return res.status(400).json({
+                success: false,
+                message: "Current PIN, new PIN, and confirmation are required"
+            });
+        }
+
+        // Validate new PIN format (4 digits)
+        if (!/^[0-9]{4}$/.test(new_pin)) {
+            return res.status(400).json({
+                success: false,
+                message: "New PIN must be exactly 4 digits"
+            });
+        }
+
+        // Check if new PIN matches confirmation
+        if (new_pin !== confirm_new_pin) {
+            return res.status(400).json({
+                success: false,
+                message: "New PIN and confirmation do not match"
+            });
+        }
+
+        // Find user
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Verify current PIN
+        const isCurrentPinValid = await bcrypt.compare(current_pin, user.user_pin);
+        if (!isCurrentPinValid) {
+            console.error('❌ Current PIN invalid');
+            return res.status(401).json({
+                success: false,
+                message: "Current PIN is incorrect"
+            });
+        }
+
+        // Check if new PIN is same as current PIN
+        const isSamePin = await bcrypt.compare(new_pin, user.user_pin);
+        if (isSamePin) {
+            return res.status(400).json({
+                success: false,
+                message: "New PIN must be different from current PIN"
+            });
+        }
+
+        // Hash new PIN
+        console.log('🔒 Hashing new PIN...');
+        const hashedNewPin = await bcrypt.hash(new_pin, 10);
+
+        // Update user PIN
+        user.user_pin = hashedNewPin;
+        await user.save();
+
+        console.log('✅ PIN changed successfully');
+        console.log('🔄 === CHANGE PIN END ===\n');
+
+        res.status(200).json({
+            success: true,
+            message: "PIN changed successfully"
+        });
+
+    } catch (error) {
+        console.error('❌ Change PIN error:', error);
+        console.log('🔄 === CHANGE PIN END ===\n');
+        
+        res.status(500).json({
+            success: false,
+            message: "Failed to change PIN. Please try again."
+        });
+    }
+};
+
+// Reset PIN - For forgot PIN (email-based)
+exports.resetPin = async(req, res) => {
+    try {
+        console.log('\n🔓 === RESET PIN START ===');
+        const { email, new_pin, confirm_new_pin } = req.body;
+
+        // Validate required fields
+        if (!email || !new_pin || !confirm_new_pin) {
+            return res.status(400).json({
+                success: false,
+                message: "Email, new PIN, and confirmation are required"
+            });
+        }
+
+        // Validate new PIN format (4 digits)
+        if (!/^[0-9]{4}$/.test(new_pin)) {
+            return res.status(400).json({
+                success: false,
+                message: "New PIN must be exactly 4 digits"
+            });
+        }
+
+        // Check if new PIN matches confirmation
+        if (new_pin !== confirm_new_pin) {
+            return res.status(400).json({
+                success: false,
+                message: "New PIN and confirmation do not match"
+            });
+        }
+
+        // Find user by email
+        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!user) {
+            // Don't reveal if email exists or not for security
+            return res.status(200).json({
+                success: true,
+                message: "If the email exists, PIN reset instructions have been sent"
+            });
+        }
+
+        // Hash new PIN
+        console.log('🔒 Hashing new PIN...');
+        const hashedNewPin = await bcrypt.hash(new_pin, 10);
+
+        // Update user PIN
+        user.user_pin = hashedNewPin;
+        await user.save();
+
+        console.log('✅ PIN reset successfully');
+        console.log('🔓 === RESET PIN END ===\n');
+
+        // In production, you'd want to send a verification email first
+        res.status(200).json({
+            success: true,
+            message: "PIN reset successfully"
+        });
+
+    } catch (error) {
+        console.error('❌ Reset PIN error:', error);
+        console.log('🔓 === RESET PIN END ===\n');
+        
+        res.status(500).json({
+            success: false,
+            message: "Failed to reset PIN. Please try again."
         });
     }
 };

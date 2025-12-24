@@ -1,12 +1,14 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const kenyaFinanceKnowledgeBase = require('./kenyaFinanceKnowledgeBase');
 
-console.log("API Key loaded:", process.env.GEMINI_API_KEY ? "✅ Yes" : "❌ No");
+console.log("API Key loaded:", process.env.GROQ_API_KEY ? "✅ Yes" : "❌ No");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
 
 // Enhanced system instruction for comprehensive Kenyan finance expertise
 const SYSTEM_INSTRUCTION = `You are GKash Financial Advisor, Kenya's most knowledgeable AI financial expert specializing in the Kenyan financial market.
@@ -36,12 +38,6 @@ ALWAYS PRIORITIZE:
 If asked about non-financial topics, politely redirect: "I specialize in Kenyan finance and investments. What financial topic can I help you with?"
 
 Remember: You're helping Kenyan investors make informed decisions about their money in the local market.`;
-
-// Initialize the model with system instruction - using working model
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.0-flash-exp",
-    systemInstruction: SYSTEM_INSTRUCTION
-});
 
 // Store chat sessions per user/session
 const chatSessions = new Map();
@@ -138,21 +134,24 @@ const searchKnowledgeBase = (query) => {
 /**
  * Initialize a new chat session
  * @param {string} sessionId - Unique identifier for the session
- * @returns {Object} Chat session object
+ * @returns {Array} Chat history array
  */
 const initializeChat = (sessionId = 'default') => {
-    const chatSession = model.startChat({
-        history: [],
-    });
-    chatSessions.set(sessionId, chatSession);
+    const chatHistory = [
+        {
+            role: "system",
+            content: SYSTEM_INSTRUCTION
+        }
+    ];
+    chatSessions.set(sessionId, chatHistory);
     console.log(`✅ Chat session initialized for: ${sessionId}`);
-    return chatSession;
+    return chatHistory;
 };
 
 /**
  * Get or create a chat session
  * @param {string} sessionId - Unique identifier for the session
- * @returns {Object} Chat session object
+ * @returns {Array} Chat history array
  */
 const getOrCreateSession = (sessionId = 'default') => {
     if (!chatSessions.has(sessionId)) {
@@ -169,7 +168,7 @@ const getOrCreateSession = (sessionId = 'default') => {
  */
 const sendMessage = async (userMessage, sessionId = 'default') => {
     try {
-        const chatSession = getOrCreateSession(sessionId);
+        const chatHistory = getOrCreateSession(sessionId);
 
         console.log(`[${sessionId}] User message:`, userMessage);
         
@@ -189,13 +188,31 @@ Please answer the user's question using the provided context about the Kenyan fi
             console.log(`[${sessionId}] RAG Context added:`, relevantContext.substring(0, 200) + '...');
         }
         
-        const result = await chatSession.sendMessage(enhancedMessage);
-        const response = await result.response;
-        const text = response.text();
+        // Add user message to history
+        chatHistory.push({
+            role: "user",
+            content: enhancedMessage
+        });
         
-        console.log(`[${sessionId}] AI response:`, text);
+        // Get response from Groq
+        const completion = await groq.chat.completions.create({
+            messages: chatHistory,
+            model: "llama-3.3-70b-versatile", // Best general-purpose model
+            temperature: 0.7,
+            max_tokens: 1024,
+        });
         
-        return text;
+        const responseText = completion.choices[0].message.content;
+        
+        // Add assistant response to history
+        chatHistory.push({
+            role: "assistant",
+            content: responseText
+        });
+        
+        console.log(`[${sessionId}] AI response:`, responseText);
+        
+        return responseText;
     } catch (error) {
         console.error(`❌ Error sending message for session ${sessionId}:`, error.message);
         throw error;
@@ -235,9 +252,23 @@ ${enhancedQuery}
 Please provide specific, actionable advice for the Kenyan market using current rates and products mentioned in the context.`;
         }
         
-        const result = await model.generateContent(enhancedQuery);
-        const response = await result.response;
-        const advice = response.text();
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: SYSTEM_INSTRUCTION
+                },
+                {
+                    role: "user",
+                    content: enhancedQuery
+                }
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1024,
+        });
+        
+        const advice = completion.choices[0].message.content;
         
         console.log('💡 Financial advice generated for:', query);
         return advice;
@@ -251,7 +282,7 @@ Please provide specific, actionable advice for the Kenyan market using current r
 /**
  * Reset a specific chat session
  * @param {string} sessionId - Unique identifier for the session
- * @returns {Object} New chat session object
+ * @returns {Array} New chat history array
  */
 const resetChat = (sessionId = 'default') => {
     chatSessions.delete(sessionId);
@@ -272,39 +303,51 @@ const deleteSession = (sessionId) => {
 };
 
 /**
- * Test the Gemini API connection
+ * Test the Groq API connection
  * @returns {Promise<string>} Test response
  */
 const testConnection = async () => {
-    console.log("Starting connection test...");
+    console.log("Starting Groq connection test...");
     
     try {
-        console.log("Sending test request to Gemini...");
+        console.log("Sending test request to Groq...");
         
-        const result = await model.generateContent(
-            "What are money market funds? Give a brief answer."
-        );
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: SYSTEM_INSTRUCTION
+                },
+                {
+                    role: "user",
+                    content: "What are money market funds? Give a brief answer."
+                }
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 512,
+        });
         
-        const response = await result.response;
-        const text = response.text();
+        const text = completion.choices[0].message.content;
         
-        console.log("✅ Gemini API Connection Successful!");
+        console.log("✅ Groq API Connection Successful!");
         console.log("\nResponse:", text);
+        console.log("\nModel used:", completion.model);
+        console.log("Tokens used:", completion.usage);
         
         return text;
     } catch (error) {
-        console.error("❌ Gemini API Connection Failed:", error.message);
+        console.error("❌ Groq API Connection Failed:", error.message);
         console.error("Full error:", error);
         throw error;
     }
 };
 
-// Test the connection on startup (optional - comment out in production)
-// Temporarily disabled to save quota
+// Uncomment to test connection on startup
 // testConnection().catch(err => console.error("Connection test failed:", err));
 
 module.exports = {
-    genAI,
+    groq,
     sendMessage,
     getFinancialAdvice,
     resetChat,

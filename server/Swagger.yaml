@@ -767,6 +767,286 @@ paths:
       summary: 📝 Register - Name, Email, PIN
       description: |
         Simple one-step registration. Provide your name, email, and 4-digit PIN.
+        **Returns:**
+        - JWT token (valid for 7 days)
+        - User details
+        **Requirements:**
+        - Valid email address
+        - 4-digit numeric PIN
+        - Unique email (not already registered)
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_name
+                - email
+                - user_pin
+              properties:
+                user_name:
+                  type: string
+                  example: "John Doe"
+                  description: Full name
+                email:
+                  type: string
+                  format: email
+                  example: "john@example.com"
+                  description: Email address (must be unique)
+                user_pin:
+                  type: string
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN for login
+      responses:
+        "201":
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration successful"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    description: JWT token for authenticated requests (7 days expiry)
+
+  /auth/login:
+    post:
+      summary: 🔐 Login - Email + PIN
+      description: |
+        **Simple two-field login**
+        Users enter their email (used during registration) and 4-digit PIN.
+        **User Experience:** Enter email + PIN → Receive JWT token → Access account
+        **Security:** PIN is hashed with bcrypt, JWT token expires in 7 days
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - user_pin
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "john@example.com"
+                  description: Email address used during registration
+                user_pin:
+                  type: string
+                  pattern: '^[0-9]{4}$'
+                  example: "1234"
+                  description: 4-digit PIN
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Login successful"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    description: JWT token for authenticated requests (7 days)
+                  user:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                        example: "john@example.com"
+                      user_name:
+                        type: string
+                        example: "JOHN DOE"
+                      phoneNumber:
+                        type: string
+                        example: "0712345678"
+                      idVerified:
+                        type: boolean
+                        example: true
+        "400":
+          description: Missing required fields or registration incomplete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Email and PIN are required"
+        "401":
+          description: Invalid PIN
+        "404":
+          description: User not found with this email
+        "500":
+          description: Server error
+
+  /accounts:
+    post:
+      summary: Create a new account
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account_type
+              properties:
+                account_type:
+                  type: string
+                  enum: ["balanced fund", "fixed income fund", "money market fund", "stock market"]
+                  example: balanced fund
+      responses:
+        "201":
+          description: Account created successfully
+
+    get:
+      summary: Get all accounts for logged-in user
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of accounts
+
+  /accounts/{id}:
+    get:
+      summary: Get account by ID
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Account object
+
+    delete:
+      summary: Delete account by ID
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Account deleted successfully
+
+  /payments/deposit:
+    post:
+      summary: Initiate deposit via Payhero STK Push
+      description: |
+        Initiate a deposit to your account using Payhero STK Push (M-Pesa).
+        Requires authentication (Bearer JWT).
+      tags: [Payments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phone
+                - amount
+                - account_id
+              properties:
+                phone:
+                  type: string
+                  example: "0702369124"
+                  description: Phone number to receive STK push
+                amount:
+                  type: number
+                  example: 100
+                  description: Amount to deposit (KES)
+                account_id:
+                  type: string
+                  example: "605c72f2e3b1c72f8c8e4b1a"
+                  description: Your account ID
+      responses:
+        "200":
+          description: STK push sent successfully
+        "400":
+          description: Validation error
+        "500":
+          description: Server or Payhero error
+
+  /payments/callback:
+    post:
+      summary: Payhero payment callback (webhook)
+      description: |
+        Payhero will POST payment results to this endpoint. No authentication required.
+      tags: [Payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Callback received and processed
+
+  /payments/status/{transaction_id}:
+    get:
+      summary: Check Payhero transaction status
+      description: |
+        Check the status of a Payhero deposit transaction by transaction ID. Requires authentication.
+      tags: [Payments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: transaction_id
+          schema:
+            type: string
+          required: true
+          description: Your transaction ID
+      responses:
+        "200":
+          description: Transaction status returned
+        "404":
+          description: Transaction not found
+        "500":
+          description: Server or Payhero error
+  /auth/register:
+    post:
+      summary: 📝 Register - Name, Email, PIN
+      description: |
+        Simple one-step registration. Provide your name, email, and 4-digit PIN.
         
         **Returns:**
         - JWT token (valid for 7 days)

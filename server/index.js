@@ -6,8 +6,10 @@ const path = require("path");
 const userRoutes = require("./routes/userRoutes");
 const authRoutes = require("./routes/authRoutes");
 const accountRoutes = require("./routes/accountRoutes");
+const transactionRoutes = require("./routes/transactionRoutes");
 const chatRoutes = require('./routes/chatRoutes');
 const verificationRoutes = require("./routes/verificationRoutes");
+const payheroRoutes = require("./routes/payhero");
 
 const swaggerUi = require("swagger-ui-express");
 const Yaml = require("yamljs");
@@ -173,6 +175,8 @@ app.use("/api", userRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api", accountRoutes);
 app.use("/api", chatRoutes);
+app.use("/api", transactionRoutes);
+app.use("/api/payments", payheroRoutes);
 app.use("/api/verification", verificationRoutes);
 
 // Health check

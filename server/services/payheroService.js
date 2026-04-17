@@ -63,6 +63,30 @@ async function initiateStkPush({ phoneNumber, amount, reference, description }) 
   }
 }
 
+/**
+ * Check payment status via Payhero
+ * @param {string} checkoutRequestId - The checkout_request_id from the STK Push response
+ * @returns {Promise<Object>} Payhero API response
+ */
+async function checkPaymentStatus(checkoutRequestId) {
+  try {
+    console.log('[Payhero] Checking payment status for:', checkoutRequestId);
+    const response = await payheroClient.get(
+      `/transaction-status?checkout_request_id=${checkoutRequestId}`
+    );
+    console.log('[Payhero] Payment Status Response:', response.data);
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      console.error('[Payhero] Status Check Error Response:', error.response.data);
+    } else {
+      console.error('[Payhero] Status Check Error:', error.message);
+    }
+    throw error.response ? error.response.data : error;
+  }
+}
+
 module.exports = {
   initiateStkPush,
+  checkPaymentStatus,
 };

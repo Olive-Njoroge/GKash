@@ -949,6 +949,53 @@ paths:
         "200":
           description: Account object
 
+  /accounts/{id}/balance:
+    get:
+      summary: Get account balance
+      description: |
+        Retrieve the current balance for a specific account.
+        **Use this endpoint to view your updated balance after any deposit or withdrawal.**
+        
+        - After a successful deposit or withdrawal, you can call this endpoint to see the latest balance.
+        - The response includes the current account balance and account details.
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: The account ID
+      responses:
+        "200":
+          description: Current account balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  account_id:
+                    type: string
+                    example: "605c72f2e3b1c72f8c8e4b1a"
+                  balance:
+                    type: number
+                    example: 1500.75
+                  currency:
+                    type: string
+                    example: "KES"
+                  account_type:
+                    type: string
+                    example: "money market fund"
+        "404":
+          description: Account not found
+        "401":
+          description: Unauthorized
+
     delete:
       summary: Delete account by ID
       tags: [Accounts]
@@ -1375,6 +1422,8 @@ paths:
         Create a manual balance adjustment (not via payment gateway).
         This is for direct balance changes, admin adjustments, or internal transfers.
         For payment gateway deposits, use `/transactions/deposit` instead.
+        
+        **After any deposit or withdrawal, use `/accounts/{id}/balance` to view the updated account balance.**
       tags: [Transactions]
       security:
         - bearerAuth: []
@@ -1414,6 +1463,8 @@ paths:
       description: |
         Add money to your account using Paystack payment gateway.
         Supports multiple currencies: KES (M-Pesa), USD, NGN.
+        
+        **After a successful deposit, call `/accounts/{id}/balance` to view your new balance.**
       tags: [Transactions]
       security:
         - bearerAuth: []
@@ -1476,6 +1527,8 @@ paths:
       responses:
         "201":
           description: Withdrawal initiated successfully
+          
+          # After a successful withdrawal, call `/accounts/{id}/balance` to view your updated balance.
 
   /transactions/verify/{reference}:
     get:

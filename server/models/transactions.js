@@ -8,6 +8,7 @@ const transactionSchema = new mongoose.Schema({
     status: {type: String, enum: ["completed", "pending", "failed"], required: true},
     date_and_time: {type: Date, default: Date.now},
     payhero_reference: {type: String, default: null}, // For Payhero STK push tracking
+    payhero_checkout_id: { type: String },
 }, {timestamps: true})
 
 module.exports = mongoose.model("Transaction", transactionSchema)
